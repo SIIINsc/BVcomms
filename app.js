@@ -1873,7 +1873,7 @@ function getStylesheetText() {
         });
       }
     } catch (error) {
-      console.warn(\"Unable to read stylesheet\", error);
+      console.warn("Unable to read stylesheet", error);
     }
   });
   return cssText;
