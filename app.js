@@ -937,6 +937,8 @@ function renderFlowsBlock(block, index) {
       flowActions.appendChild(removeFlow);
       card.appendChild(flowActions);
     }
+    importInput.value = "";
+  });
 
     body.appendChild(card);
   });
