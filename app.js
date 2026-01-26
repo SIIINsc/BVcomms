@@ -3,11 +3,7 @@
 const STORAGE_KEY = "scscp_state";
 const ADMIN_KEY = "scscp_admin";
 const NAME_EDIT_KEY = "scscp_name_edit";
-const FLOW_ROLE_LABELS = {
-  shotCaller: "Shot caller",
-  yourself: "Yourself",
-  enemyTarget: "Enemy target",
-};
+const ROLE_KEYS = ["shotCaller", "yourself", "enemyTarget"];
 
 const DEFAULT_STATE = {
   header: {
@@ -17,6 +13,11 @@ const DEFAULT_STATE = {
     intro: "Doctrine-grade phrasing for tight, unambiguous team coordination.",
     logoSrc: "",
     logoAlt: "Header logo",
+  },
+  roleLabels: {
+    shotCaller: "Shot caller",
+    yourself: "Yourself",
+    enemyTarget: "Enemy target",
   },
   footer: {
     lines: ["How to run: open index.html directly in a browser."],
@@ -50,10 +51,18 @@ const DEFAULT_STATE = {
       id: "flows-block",
       type: "flows",
       title: "Flow Diagrams",
+      legend: {
+        arrowALabel: "Arrow A",
+        arrowADesc: "Short breath (3–5s, no name)",
+        arrowBLabel: "Arrow B",
+        arrowBDesc: "Time passed (name required)",
+      },
       flows: [
         {
           id: "flow-target",
           title: "Target Cycle",
+          exampleLabel: "Example",
+          exampleTargetId: "",
           rows: [
             {
               id: "flow-target-row-1",
@@ -88,6 +97,8 @@ const DEFAULT_STATE = {
         {
           id: "flow-regroup",
           title: "Regroup Cycle",
+          exampleLabel: "Example",
+          exampleTargetId: "",
           rows: [
             {
               id: "flow-regroup-row-1",
@@ -104,6 +115,8 @@ const DEFAULT_STATE = {
         {
           id: "flow-threat",
           title: "Threat Interrupt",
+          exampleLabel: "Example",
+          exampleTargetId: "",
           rows: [
             {
               id: "flow-threat-row-1",
@@ -507,8 +520,6 @@ const blocksContainer = document.getElementById("blocksContainer");
 const adminToggle = document.getElementById("adminToggle");
 const adminStatus = document.getElementById("adminStatus");
 const addBlockBtn = document.getElementById("addBlock");
-const expandAllBtn = document.getElementById("expandAll");
-const collapseAllBtn = document.getElementById("collapseAll");
 
 function createId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -573,6 +584,10 @@ function normalizeState(source) {
   if (typeof nextState.header.logoAlt !== "string") {
     nextState.header.logoAlt = "Header logo";
   }
+  nextState.roleLabels = {
+    ...deepClone(DEFAULT_STATE.roleLabels),
+    ...(nextState.roleLabels || {}),
+  };
 
   nextState.callouts = (nextState.callouts || []).map((callout) => ({
     importantNote: "",
@@ -581,6 +596,18 @@ function normalizeState(source) {
   }));
 
   nextState.blocks = (nextState.blocks || []).map((block) => {
+    if (block.type === "youtube") {
+      const migratedBlock = {
+        id: block.id,
+        type: "video",
+        title: block.title || "Video",
+        videos: block.url
+          ? [{ id: createId("video"), type: "youtube", src: block.url }]
+          : [],
+      };
+      return migratedBlock;
+    }
+    block.videos = block.videos || [];
     if (block.type === "rules") {
       block.sections = (block.sections || []).map((section) => {
         if (Array.isArray(section.items) && !section.body) {
@@ -597,7 +624,13 @@ function normalizeState(source) {
       });
     }
     if (block.type === "flows") {
+      block.legend = {
+        ...deepClone(DEFAULT_STATE.blocks.find((item) => item.type === "flows")?.legend || {}),
+        ...(block.legend || {}),
+      };
       block.flows = (block.flows || []).map((flow) => {
+        flow.exampleLabel = flow.exampleLabel || "Example";
+        flow.exampleTargetId = flow.exampleTargetId || "";
         flow.rows = (flow.rows || []).map((row) => {
           row.rowTitle = row.rowTitle || "";
           row.rowExample = row.rowExample || "";
@@ -732,6 +765,26 @@ function renderHeader() {
       state.header.logoSrc = logoInput.value.trim();
       render();
     });
+    const logoUploadLabel = document.createElement("label");
+    logoUploadLabel.className = "btn btn-outline";
+    logoUploadLabel.textContent = "Upload logo";
+    logoUploadLabel.setAttribute("for", "headerLogoUpload");
+    const logoUploadInput = document.createElement("input");
+    logoUploadInput.type = "file";
+    logoUploadInput.id = "headerLogoUpload";
+    logoUploadInput.accept = "image/*";
+    logoUploadInput.addEventListener("change", () => {
+      const file = logoUploadInput.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          state.header.logoSrc = reader.result;
+          render();
+        };
+        reader.readAsDataURL(file);
+      }
+      logoUploadInput.value = "";
+    });
     const altInput = document.createElement("input");
     altInput.type = "text";
     altInput.className = "inline-input";
@@ -742,6 +795,8 @@ function renderHeader() {
     });
     logoEditor.appendChild(logoLabel);
     logoEditor.appendChild(logoInput);
+    logoEditor.appendChild(logoUploadLabel);
+    logoEditor.appendChild(logoUploadInput);
     logoEditor.appendChild(altInput);
     wrapper.appendChild(logoEditor);
   } else {
@@ -855,12 +910,14 @@ function renderFooter() {
 
 function renderNav() {
   categoryNav.innerHTML = "";
-  getCalloutGroups().forEach((group) => {
-    const link = document.createElement("a");
-    link.href = `#${group.id}`;
-    link.textContent = group.title;
-    categoryNav.appendChild(link);
-  });
+  state.blocks
+    .filter((block) => block.type !== "adminTools")
+    .forEach((block) => {
+      const link = document.createElement("a");
+      link.href = `#${block.id}`;
+      link.textContent = block.title || "Untitled block";
+      categoryNav.appendChild(link);
+    });
 }
 
 function render() {
@@ -882,8 +939,8 @@ function render() {
       blocksContainer.appendChild(renderCalloutGroupBlock(block, index));
       return;
     }
-    if (block.type === "youtube") {
-      blocksContainer.appendChild(renderYoutubeBlock(block, index));
+    if (block.type === "video") {
+      blocksContainer.appendChild(renderVideoBlock(block, index));
       return;
     }
     if (block.type === "adminTools") {
@@ -900,6 +957,7 @@ function renderRulesBlock(block, index) {
   const section = document.createElement("section");
   section.className = "panel";
   section.id = block.id;
+  section.dataset.title = block.title || "Rules";
 
   const header = document.createElement("div");
   header.className = "panel-header";
@@ -1034,6 +1092,10 @@ function renderRulesBlock(block, index) {
   }
 
   section.appendChild(body);
+  const videos = renderVideoSection(block, { panelPadding: true });
+  if (videos) {
+    section.appendChild(videos);
+  }
   return section;
 }
 
@@ -1041,10 +1103,76 @@ function renderFlowsBlock(block, index) {
   const section = document.createElement("section");
   section.className = "panel";
   section.id = block.id;
+  section.dataset.title = block.title || "Flows";
+  if (!block.legend) {
+    block.legend = deepClone(DEFAULT_STATE.blocks.find((item) => item.type === "flows").legend);
+  }
 
   const header = document.createElement("div");
   header.className = "panel-header";
   header.appendChild(renderBlockTitle(block, "h2"));
+  const legend = document.createElement("div");
+  legend.className = "flow-legend";
+  if (adminMode) {
+    const legendInputs = document.createElement("div");
+    legendInputs.className = "flow-legend-editor";
+    const arrowALabel = document.createElement("input");
+    arrowALabel.type = "text";
+    arrowALabel.value = block.legend?.arrowALabel || "";
+    arrowALabel.placeholder = "Arrow A label";
+    arrowALabel.className = "panel-title-input";
+    arrowALabel.addEventListener("input", () => {
+      block.legend.arrowALabel = arrowALabel.value;
+    });
+    const arrowADesc = document.createElement("input");
+    arrowADesc.type = "text";
+    arrowADesc.value = block.legend?.arrowADesc || "";
+    arrowADesc.placeholder = "Arrow A description";
+    arrowADesc.className = "panel-title-input";
+    arrowADesc.addEventListener("input", () => {
+      block.legend.arrowADesc = arrowADesc.value;
+    });
+    const arrowBLabel = document.createElement("input");
+    arrowBLabel.type = "text";
+    arrowBLabel.value = block.legend?.arrowBLabel || "";
+    arrowBLabel.placeholder = "Arrow B label";
+    arrowBLabel.className = "panel-title-input";
+    arrowBLabel.addEventListener("input", () => {
+      block.legend.arrowBLabel = arrowBLabel.value;
+    });
+    const arrowBDesc = document.createElement("input");
+    arrowBDesc.type = "text";
+    arrowBDesc.value = block.legend?.arrowBDesc || "";
+    arrowBDesc.placeholder = "Arrow B description";
+    arrowBDesc.className = "panel-title-input";
+    arrowBDesc.addEventListener("input", () => {
+      block.legend.arrowBDesc = arrowBDesc.value;
+    });
+    legendInputs.appendChild(arrowALabel);
+    legendInputs.appendChild(arrowADesc);
+    legendInputs.appendChild(arrowBLabel);
+    legendInputs.appendChild(arrowBDesc);
+    legend.appendChild(legendInputs);
+  } else {
+    const legendLabel = document.createElement("span");
+    legendLabel.innerHTML = "<strong>Legend:</strong>";
+    const arrowA = document.createElement("span");
+    arrowA.className = "flow-arrow";
+    arrowA.textContent = "→";
+    const arrowAText = document.createElement("span");
+    arrowAText.textContent = `${block.legend?.arrowALabel || "Arrow A"} — ${block.legend?.arrowADesc || ""}`.trim();
+    const arrowB = document.createElement("span");
+    arrowB.className = "flow-arrow arrow-time";
+    arrowB.textContent = "⏱→";
+    const arrowBText = document.createElement("span");
+    arrowBText.textContent = `${block.legend?.arrowBLabel || "Arrow B"} — ${block.legend?.arrowBDesc || ""}`.trim();
+    legend.appendChild(legendLabel);
+    legend.appendChild(arrowA);
+    legend.appendChild(arrowAText);
+    legend.appendChild(arrowB);
+    legend.appendChild(arrowBText);
+  }
+  header.appendChild(legend);
   header.appendChild(renderBlockActions(block, index));
   section.appendChild(header);
 
@@ -1127,6 +1255,46 @@ function renderFlowsBlock(block, index) {
       card.appendChild(flowActions);
     }
 
+    const exampleRow = document.createElement("div");
+    exampleRow.className = "flow-example-row";
+    if (adminMode) {
+      const labelInput = document.createElement("input");
+      labelInput.type = "text";
+      labelInput.value = flow.exampleLabel || "Example";
+      labelInput.placeholder = "Example button label";
+      labelInput.className = "panel-title-input";
+      labelInput.addEventListener("input", () => {
+        flow.exampleLabel = labelInput.value;
+      });
+      const targetSelect = document.createElement("select");
+      const videoBlocks = state.blocks.filter((item) => item.type === "video");
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "Select target video block";
+      targetSelect.appendChild(emptyOption);
+      videoBlocks.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.title || "Video";
+        option.selected = item.id === flow.exampleTargetId;
+        targetSelect.appendChild(option);
+      });
+      targetSelect.addEventListener("change", () => {
+        flow.exampleTargetId = targetSelect.value;
+      });
+      exampleRow.appendChild(labelInput);
+      exampleRow.appendChild(targetSelect);
+    } else if (flow.exampleTargetId) {
+      const link = document.createElement("a");
+      link.className = "btn btn-ghost";
+      link.href = `#${flow.exampleTargetId}`;
+      link.textContent = flow.exampleLabel || "Example";
+      exampleRow.appendChild(link);
+    }
+    if (exampleRow.childNodes.length) {
+      card.appendChild(exampleRow);
+    }
+
     body.appendChild(card);
   });
 
@@ -1154,6 +1322,29 @@ function renderFlowsBlock(block, index) {
   }
 
   section.appendChild(body);
+  const videos = renderVideoSection(block, { panelPadding: true });
+  if (videos) {
+    section.appendChild(videos);
+  }
+  return section;
+}
+
+function renderVideoBlock(block, index) {
+  const section = document.createElement("section");
+  section.className = "panel";
+  section.id = block.id;
+  section.dataset.title = block.title || "Video";
+
+  const header = document.createElement("div");
+  header.className = "panel-header";
+  header.appendChild(renderBlockTitle(block, "h2"));
+  header.appendChild(renderBlockActions(block, index));
+  section.appendChild(header);
+
+  const videos = renderVideoSection(block, { showEmpty: !adminMode, panelPadding: true });
+  if (videos) {
+    section.appendChild(videos);
+  }
   return section;
 }
 
@@ -1209,6 +1400,46 @@ function renderYoutubeBlock(block, index) {
 
 function renderFlowRow(flow, row, rowIndex) {
   const wrapper = document.createElement("div");
+  wrapper.className = "flow-row-block";
+
+  if (row.rowTitle || row.rowExample || adminMode) {
+    const meta = document.createElement("div");
+    meta.className = "flow-row-meta";
+    if (adminMode) {
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.value = row.rowTitle || "";
+      titleInput.placeholder = "Row title";
+      titleInput.className = "panel-title-input";
+      titleInput.addEventListener("input", () => {
+        row.rowTitle = titleInput.value;
+      });
+      const exampleInput = document.createElement("input");
+      exampleInput.type = "text";
+      exampleInput.value = row.rowExample || "";
+      exampleInput.placeholder = "Row example";
+      exampleInput.className = "panel-title-input";
+      exampleInput.addEventListener("input", () => {
+        row.rowExample = exampleInput.value;
+      });
+      meta.appendChild(titleInput);
+      meta.appendChild(exampleInput);
+    } else {
+      if (row.rowTitle) {
+        const title = document.createElement("div");
+        title.className = "flow-row-title";
+        title.textContent = row.rowTitle;
+        meta.appendChild(title);
+      }
+      if (row.rowExample) {
+        const example = document.createElement("div");
+        example.className = "flow-row-example";
+        example.textContent = row.rowExample;
+        meta.appendChild(example);
+      }
+    }
+    wrapper.appendChild(meta);
+  }
 
   if (row.rowTitle || row.rowExample || adminMode) {
     const meta = document.createElement("div");
@@ -1257,7 +1488,7 @@ function renderFlowRow(flow, row, rowIndex) {
       nodeWrap.className = "flow-node-wrap";
       const label = document.createElement("div");
       label.className = "flow-role-label";
-      label.textContent = FLOW_ROLE_LABELS[element.role] || "Role";
+      label.textContent = state.roleLabels[element.role] || "Role";
       const node = document.createElement("span");
       const roleClass =
         element.role === "shotCaller" ? "role-shot" : element.role === "enemyTarget" ? "role-enemy" : "role-yourself";
@@ -1276,7 +1507,7 @@ function renderFlowRow(flow, row, rowIndex) {
     } else if (element.type === "arrow") {
       const arrow = document.createElement("span");
       arrow.className = element.kind === "time" ? "flow-arrow arrow-time" : "flow-arrow";
-      arrow.textContent = element.kind === "time" ? "⇢" : "→";
+      arrow.textContent = element.kind === "time" ? "⏱→" : "→";
       rowEl.appendChild(arrow);
     } else if (element.type === "divider") {
       const divider = document.createElement("span");
@@ -1336,10 +1567,10 @@ function renderFlowRow(flow, row, rowIndex) {
     let extraControl = document.createElement("span");
     if (element.type === "node") {
       const roleSelect = document.createElement("select");
-      ["shotCaller", "yourself", "enemyTarget"].forEach((role) => {
+      ROLE_KEYS.forEach((role) => {
         const option = document.createElement("option");
         option.value = role;
-        option.textContent = FLOW_ROLE_LABELS[role];
+        option.textContent = state.roleLabels[role] || role;
         option.selected = role === (element.role || "yourself");
         roleSelect.appendChild(option);
       });
@@ -1412,7 +1643,7 @@ function renderFlowRow(flow, row, rowIndex) {
   addNode.type = "button";
   addNode.textContent = "Add node";
   addNode.addEventListener("click", () => {
-    row.elements.push({ id: createId("el"), type: "node", text: "", emphasis: false });
+    row.elements.push({ id: createId("el"), type: "node", text: "", role: "yourself", emphasis: false });
     render();
   });
   const addDivider = document.createElement("button");
@@ -1471,6 +1702,7 @@ function renderCalloutGroupBlock(block, index) {
   const section = document.createElement("section");
   section.className = "category-section callout-group-card";
   section.id = block.id;
+  section.dataset.title = block.title || "Callouts";
 
   const header = document.createElement("div");
   header.className = "category-header";
@@ -1524,6 +1756,11 @@ function renderCalloutGroupBlock(block, index) {
     section.appendChild(renderCalloutCard(item));
   });
 
+  const videos = renderVideoSection(block, { panelPadding: false });
+  if (videos) {
+    section.appendChild(videos);
+  }
+
   return section;
 }
 
@@ -1559,6 +1796,26 @@ function renderAdminToolsBlock(block, index) {
   label.appendChild(span);
   toggleRow.appendChild(label);
   body.appendChild(toggleRow);
+
+  const roleRow = document.createElement("div");
+  roleRow.className = "admin-row";
+  const roleTitle = document.createElement("span");
+  roleTitle.className = "admin-note";
+  roleTitle.textContent = "Role labels";
+  roleRow.appendChild(roleTitle);
+  ROLE_KEYS.forEach((role) => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = state.roleLabels[role] || "";
+    input.placeholder = role;
+    input.className = "panel-title-input";
+    input.addEventListener("input", () => {
+      state.roleLabels[role] = input.value;
+      render();
+    });
+    roleRow.appendChild(input);
+  });
+  body.appendChild(roleRow);
 
   const actionRow = document.createElement("div");
   actionRow.className = "admin-row";
@@ -1645,6 +1902,7 @@ function renderAdminToolsBlock(block, index) {
       id: createId("rules"),
       type: "rules",
       title: "Rules of Use",
+      videos: [],
       sections: [{ id: createId("rules-section"), title: "New section", subtitle: "", body: "", note: "" }],
     });
     render();
@@ -1658,10 +1916,14 @@ function renderAdminToolsBlock(block, index) {
       id: createId("flows"),
       type: "flows",
       title: "Flow Diagrams",
+      videos: [],
+      legend: deepClone(DEFAULT_STATE.blocks.find((item) => item.type === "flows").legend),
       flows: [
         {
           id: createId("flow"),
           title: "New flow",
+          exampleLabel: "Example",
+          exampleTargetId: "",
           rows: [
             {
               id: createId("flow-row"),
@@ -1687,6 +1949,21 @@ function renderAdminToolsBlock(block, index) {
       id: newId,
       type: "calloutGroup",
       title: "New callout group",
+      videos: [],
+    });
+    render();
+  });
+
+  const addVideo = document.createElement("button");
+  addVideo.className = "btn btn-outline";
+  addVideo.type = "button";
+  addVideo.textContent = "Add video block";
+  addVideo.addEventListener("click", () => {
+    state.blocks.push({
+      id: createId("video"),
+      type: "video",
+      title: "Video",
+      videos: [],
     });
     render();
   });
@@ -1708,7 +1985,7 @@ function renderAdminToolsBlock(block, index) {
   blockRow.appendChild(addRules);
   blockRow.appendChild(addFlows);
   blockRow.appendChild(addGroup);
-  blockRow.appendChild(addYoutube);
+  blockRow.appendChild(addVideo);
   body.appendChild(blockRow);
 
   const note = document.createElement("p");
@@ -1857,6 +2134,31 @@ function renderCalloutCard(item) {
     }, {
       type: "text",
       editable: adminMode && allowNameEdit,
+      className: "span-two",
+    })
+  );
+
+  body.appendChild(
+    renderField("Context", item.context, (value) => {
+      item.context = value;
+    }, {
+      type: "textarea",
+      editable: adminMode,
+      className: "half",
+    })
+  );
+
+  const whenField = renderWhenList(item);
+  whenField.classList.add("half");
+  body.appendChild(whenField);
+
+  body.appendChild(
+    renderField("Meaning", item.meaning, (value) => {
+      item.meaning = value;
+    }, {
+      type: "textarea",
+      editable: adminMode,
+      className: "half",
     })
   );
 
@@ -1872,29 +2174,10 @@ function renderCalloutCard(item) {
       },
       {
         editable: adminMode,
+        className: "half",
       }
     )
   );
-
-  body.appendChild(
-    renderField("Context", item.context, (value) => {
-      item.context = value;
-    }, {
-      type: "textarea",
-      editable: adminMode,
-    })
-  );
-
-  body.appendChild(
-    renderField("Meaning", item.meaning, (value) => {
-      item.meaning = value;
-    }, {
-      type: "textarea",
-      editable: adminMode,
-    })
-  );
-
-  body.appendChild(renderWhenList(item));
 
   body.appendChild(
     renderField("Response expected", item.responseExpected, (value) => {
@@ -1902,6 +2185,7 @@ function renderCalloutCard(item) {
     }, {
       type: "text",
       editable: adminMode,
+      className: "span-two",
     })
   );
 
@@ -1911,6 +2195,7 @@ function renderCalloutCard(item) {
     }, {
       type: "textarea",
       editable: adminMode,
+      className: "span-two",
     })
   );
 
@@ -1921,18 +2206,19 @@ function renderCalloutCard(item) {
       }, {
         type: "textarea",
         editable: adminMode,
+        className: "span-two",
       })
     );
   } else if (item.importantNote) {
     const noteBox = document.createElement("div");
-    noteBox.className = "callout-note-box";
+    noteBox.className = "callout-note-box span-two";
     noteBox.textContent = item.importantNote;
     body.appendChild(noteBox);
   }
 
   if (adminMode) {
     const deleteBtn = document.createElement("button");
-    deleteBtn.className = "btn btn-danger";
+    deleteBtn.className = "btn btn-danger span-two";
     deleteBtn.type = "button";
     deleteBtn.textContent = "Delete call-out";
     deleteBtn.addEventListener("click", () => {
@@ -1949,7 +2235,7 @@ function renderCalloutCard(item) {
 
 function renderField(labelText, value, onChange, options) {
   const field = document.createElement("div");
-  field.className = "field";
+  field.className = `field${options.className ? ` ${options.className}` : ""}`;
   const label = document.createElement("label");
   label.textContent = labelText;
   field.appendChild(label);
@@ -1972,7 +2258,7 @@ function renderField(labelText, value, onChange, options) {
 
 function renderSelect(labelText, value, optionsList, onChange, options) {
   const field = document.createElement("div");
-  field.className = "field";
+  field.className = `field${options.className ? ` ${options.className}` : ""}`;
   const label = document.createElement("label");
   label.textContent = labelText;
   field.appendChild(label);
@@ -2058,6 +2344,129 @@ function renderWhenList(item) {
   field.appendChild(listWrapper);
   field.appendChild(addBtn);
   return field;
+}
+
+function renderVideoSection(block, options = {}) {
+  const videos = block.videos || [];
+  const hasVideos = videos.length > 0;
+  if (!adminMode && !hasVideos && !options.showEmpty) {
+    return null;
+  }
+
+  const section = document.createElement("div");
+  section.className = `block-videos${options.panelPadding ? " panel-body" : ""}`;
+
+  if (adminMode) {
+    const controls = document.createElement("div");
+    controls.className = "video-controls";
+
+    const urlInput = document.createElement("input");
+    urlInput.type = "text";
+    urlInput.placeholder = "Paste YouTube link";
+
+    const addYoutube = document.createElement("button");
+    addYoutube.className = "btn btn-outline";
+    addYoutube.type = "button";
+    addYoutube.textContent = "Add YouTube";
+    addYoutube.addEventListener("click", () => {
+      const value = urlInput.value.trim();
+      if (!value) {
+        return;
+      }
+      if (!Array.isArray(block.videos)) {
+        block.videos = [];
+      }
+      block.videos.push({ id: createId("video"), type: "youtube", src: value });
+      urlInput.value = "";
+      render();
+    });
+
+    const uploadLabel = document.createElement("label");
+    uploadLabel.className = "btn btn-outline";
+    uploadLabel.textContent = "Upload video";
+    const uploadInput = document.createElement("input");
+    uploadInput.type = "file";
+    uploadInput.accept = "video/*";
+    uploadInput.id = createId("video-upload");
+    uploadLabel.setAttribute("for", uploadInput.id);
+    uploadInput.addEventListener("change", () => {
+      const file = uploadInput.files[0];
+      if (!file) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (!Array.isArray(block.videos)) {
+          block.videos = [];
+        }
+        block.videos.push({ id: createId("video"), type: "local", src: reader.result });
+        render();
+      };
+      reader.readAsDataURL(file);
+      uploadInput.value = "";
+    });
+
+    controls.appendChild(urlInput);
+    controls.appendChild(addYoutube);
+    controls.appendChild(uploadLabel);
+    controls.appendChild(uploadInput);
+    section.appendChild(controls);
+  }
+
+  if (!hasVideos && !adminMode && options.showEmpty) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "No video added yet.";
+    section.appendChild(empty);
+    return section;
+  }
+
+  if (hasVideos) {
+    const grid = document.createElement("div");
+    grid.className = `video-grid${videos.length === 1 ? " single" : ""}`;
+    videos.forEach((video, index) => {
+      const card = document.createElement("div");
+      card.className = "video-card";
+      if (video.type === "youtube") {
+        const embedUrl = getYouTubeEmbedUrl(video.src || "");
+        if (embedUrl) {
+          const frame = document.createElement("iframe");
+          frame.className = "youtube-frame";
+          frame.src = embedUrl;
+          frame.allowFullscreen = true;
+          card.appendChild(frame);
+        } else {
+          const fallback = document.createElement("div");
+          fallback.className = "empty-state";
+          fallback.textContent = "Invalid YouTube link.";
+          card.appendChild(fallback);
+        }
+      } else if (video.type === "local") {
+        const videoEl = document.createElement("video");
+        videoEl.className = "local-video";
+        videoEl.src = video.src;
+        videoEl.controls = true;
+        card.appendChild(videoEl);
+      }
+
+      if (adminMode) {
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "btn btn-danger";
+        removeBtn.type = "button";
+        removeBtn.textContent = "Remove";
+        removeBtn.addEventListener("click", () => {
+          block.videos.splice(index, 1);
+          render();
+        });
+        card.appendChild(removeBtn);
+      }
+
+      grid.appendChild(card);
+    });
+    section.appendChild(grid);
+  }
+
+  return section;
 }
 
 function createBlankCall(groupId) {
@@ -2157,12 +2566,6 @@ function buildViewerHtml(sourceState, styles) {
           <div class="status-pill">Viewer mode</div>
         </div>
       </div>
-      <nav class="top-nav">
-        <div class="nav-right">
-          <button id="expandAll" class="btn btn-ghost" type="button">Expand all</button>
-          <button id="collapseAll" class="btn btn-ghost" type="button">Collapse all</button>
-        </div>
-      </nav>
       <nav class="category-nav" id="categoryNav"></nav>
   `;
 
@@ -2195,15 +2598,13 @@ function buildViewerHtml(sourceState, styles) {
       ${footerHtml}
     </footer>
     <script>
-      const expandAll = document.getElementById('expandAll');
-      const collapseAll = document.getElementById('collapseAll');
       const categoryNav = document.getElementById('categoryNav');
 
       const cards = Array.from(document.querySelectorAll('.callout-card'));
 
       function buildNav() {
         categoryNav.innerHTML = '';
-        document.querySelectorAll('.category-section').forEach((section) => {
+        document.querySelectorAll('section[data-title]').forEach((section) => {
           const title = section.dataset.title;
           const link = document.createElement('a');
           link.href = '#' + section.id;
@@ -2217,14 +2618,6 @@ function buildViewerHtml(sourceState, styles) {
         header.addEventListener('click', () => {
           card.classList.toggle('expanded');
         });
-      });
-
-      expandAll.addEventListener('click', () => {
-        cards.forEach((card) => card.classList.add('expanded'));
-      });
-
-      collapseAll.addEventListener('click', () => {
-        cards.forEach((card) => card.classList.remove('expanded'));
       });
 
       buildNav();
@@ -2303,7 +2696,7 @@ async function getScriptText() {
 function buildViewerBlock(block, sourceState) {
   if (block.type === "rules") {
     return `
-      <section class="panel" id="${block.id}">
+      <section class="panel" id="${block.id}" data-title="${escapeHtml(block.title || "Rules")}">
         <div class="panel-header">
           <h2>${escapeHtml(block.title)}</h2>
         </div>
@@ -2323,15 +2716,24 @@ function buildViewerBlock(block, sourceState) {
             )
             .join("")}
         </div>
+        ${buildBlockVideosHtml(block)}
       </section>
     `;
   }
 
   if (block.type === "flows") {
+    const legend = block.legend || {};
     return `
-      <section class="panel" id="${block.id}">
+      <section class="panel" id="${block.id}" data-title="${escapeHtml(block.title || "Flows")}">
         <div class="panel-header">
           <h2>${escapeHtml(block.title)}</h2>
+          <div class="flow-legend">
+            <span><strong>Legend:</strong></span>
+            <span class="flow-arrow">→</span>
+            <span>${escapeHtml(legend.arrowALabel || "Arrow A")} — ${escapeHtml(legend.arrowADesc || "")}</span>
+            <span class="flow-arrow arrow-time">⏱→</span>
+            <span>${escapeHtml(legend.arrowBLabel || "Arrow B")} — ${escapeHtml(legend.arrowBDesc || "")}</span>
+          </div>
         </div>
         <div class="panel-body flow-grid">
           ${block.flows
@@ -2342,17 +2744,18 @@ function buildViewerBlock(block, sourceState) {
               ${flow.rows
                 .map(
                   (row) => `
-                <div class="flow-row-meta">
+                <div class="flow-row-block">
+                  ${row.rowTitle || row.rowExample ? `<div class="flow-row-meta">
                   ${row.rowTitle ? `<div class="flow-row-title">${escapeHtml(row.rowTitle)}</div>` : ""}
                   ${row.rowExample ? `<div class="flow-row-example">${escapeHtml(row.rowExample)}</div>` : ""}
-                </div>
-                <div class="flow-row">
+                  </div>` : ""}
+                  <div class="flow-row">
                   ${row.elements
                     .map((element, index) => {
                       if (element.type === "node") {
                         const roleClass =
                           element.role === "shotCaller" ? "role-shot" : element.role === "enemyTarget" ? "role-enemy" : "role-yourself";
-                        const label = FLOW_ROLE_LABELS[element.role] || "Role";
+                        const label = sourceState.roleLabels?.[element.role] || "Role";
                         const next = row.elements[index + 1];
                         const autoArrow =
                           next && next.type === "node" ? '<span class="flow-arrow">→</span>' : "";
@@ -2365,7 +2768,7 @@ function buildViewerBlock(block, sourceState) {
                       }
                       if (element.type === "arrow") {
                         const arrowClass = element.kind === "time" ? "flow-arrow arrow-time" : "flow-arrow";
-                        const arrowGlyph = element.kind === "time" ? "⇢" : "→";
+                        const arrowGlyph = element.kind === "time" ? "⏱→" : "→";
                         return `<span class="${arrowClass}">${arrowGlyph}</span>`;
                       }
                       if (element.type === "divider") {
@@ -2377,22 +2780,18 @@ function buildViewerBlock(block, sourceState) {
                       return "";
                     })
                     .join("")}
+                  </div>
                 </div>
               `
                 )
                 .join("")}
-              <div class="flow-legend">
-                <span><strong>Legend:</strong></span>
-                <span class="flow-arrow">→</span>
-                <span>Short breath (3–5s, no name)</span>
-                <span class="flow-arrow arrow-time">⇢</span>
-                <span>Time passed (name required)</span>
-              </div>
+              ${flow.exampleTargetId ? `<a class="btn btn-ghost flow-example" href="#${escapeHtml(flow.exampleTargetId)}">${escapeHtml(flow.exampleLabel || "Example")}</a>` : ""}
             </div>
           `
             )
             .join("")}
         </div>
+        ${buildBlockVideosHtml(block)}
       </section>
     `;
   }
@@ -2410,12 +2809,14 @@ function buildViewerBlock(block, sourceState) {
               </div>
             </div>
             <div class="callout-body">
-              ${viewerField("Context", callout.context)}
-              ${viewerField("Meaning", callout.meaning)}
-              ${viewerList("When to use", callout.whenToUse)}
-              ${viewerField("Response expected", callout.responseExpected)}
-              ${viewerField("Notes", callout.notes)}
-              ${callout.importantNote ? `<div class="callout-note-box">${escapeHtml(callout.importantNote)}</div>` : ""}
+              ${viewerField("Call name", callout.callName, "span-two")}
+              ${viewerField("Context", callout.context, "half")}
+              ${viewerList("When to use", callout.whenToUse, "half")}
+              ${viewerField("Meaning", callout.meaning, "half")}
+              ${viewerField("Category", block.title, "half")}
+              ${viewerField("Response expected", callout.responseExpected, "span-two")}
+              ${viewerField("Notes", callout.notes, "span-two")}
+              ${callout.importantNote ? `<div class="callout-note-box span-two">${escapeHtml(callout.importantNote)}</div>` : ""}
             </div>
           </div>
         `;
@@ -2423,11 +2824,23 @@ function buildViewerBlock(block, sourceState) {
       .join("");
 
     return `
-      <section class="category-section callout-group-card" id="${block.id}" data-title="${escapeHtml(block.title)}">
+      <section class="category-section callout-group-card" id="${block.id}" data-title="${escapeHtml(block.title || "Callouts")}">
         <div class="category-header">
           <h2>${escapeHtml(block.title)}</h2>
         </div>
         ${cards || '<div class="empty-state">No call-outs in this category yet.</div>'}
+        ${buildBlockVideosHtml(block, { panelPadding: false })}
+      </section>
+    `;
+  }
+
+  if (block.type === "video") {
+    return `
+      <section class="panel" id="${block.id}" data-title="${escapeHtml(block.title || "Video")}">
+        <div class="panel-header">
+          <h2>${escapeHtml(block.title || "Video")}</h2>
+        </div>
+        ${buildBlockVideosHtml(block, { showEmpty: true })}
       </section>
     `;
   }
@@ -2458,6 +2871,33 @@ function buildParagraphs(value) {
     .join("");
 }
 
+function buildBlockVideosHtml(block, options = {}) {
+  const videos = block.videos || [];
+  const panelClass = options.panelPadding === false ? "" : " panel-body";
+  if (!videos.length && !options.showEmpty) {
+    return "";
+  }
+  if (!videos.length && options.showEmpty) {
+    return `<div class="block-videos${panelClass}"><div class="empty-state">No video added yet.</div></div>`;
+  }
+  const gridClass = videos.length === 1 ? "video-grid single" : "video-grid";
+  const items = videos
+    .map((video) => {
+      if (video.type === "youtube") {
+        const embedUrl = getYouTubeEmbedUrl(video.src || "");
+        return embedUrl
+          ? `<div class="video-card"><iframe class="youtube-frame" src="${escapeHtml(embedUrl)}" allowfullscreen></iframe></div>`
+          : `<div class="video-card"><div class="empty-state">Invalid YouTube link.</div></div>`;
+      }
+      if (video.type === "local") {
+        return `<div class="video-card"><video class="local-video" src="${escapeHtml(video.src)}" controls></video></div>`;
+      }
+      return "";
+    })
+    .join("");
+  return `<div class="block-videos${panelClass}"><div class="${gridClass}">${items}</div></div>`;
+}
+
 function getYouTubeEmbedUrl(url) {
   if (!url) {
     return "";
@@ -2470,19 +2910,19 @@ function getYouTubeEmbedUrl(url) {
   return id ? `https://www.youtube.com/embed/${id}` : "";
 }
 
-function viewerField(label, value) {
+function viewerField(label, value, className = "") {
   return `
-    <div class="field">
+    <div class="field${className ? ` ${className}` : ""}">
       <label>${escapeHtml(label)}</label>
       <div class="readonly">${escapeHtml(value || "–")}</div>
     </div>
   `;
 }
 
-function viewerList(label, items) {
+function viewerList(label, items, className = "") {
   const list = (items || []).map((entry) => `<li>${escapeHtml(entry)}</li>`).join("");
   return `
-    <div class="field">
+    <div class="field${className ? ` ${className}` : ""}">
       <label>${escapeHtml(label)}</label>
       <ul class="readonly">${list}</ul>
     </div>
@@ -2527,7 +2967,7 @@ function showAddBlockMenu() {
     { label: "Rules block", type: "rules" },
     { label: "Flow block", type: "flows" },
     { label: "Callout group", type: "calloutGroup" },
-    { label: "YouTube block", type: "youtube" },
+    { label: "Video block", type: "video" },
     { label: "Admin tools", type: "adminTools" },
   ];
   const selection = prompt(
@@ -2543,6 +2983,7 @@ function showAddBlockMenu() {
       id: createId("rules"),
       type: "rules",
       title: "Rules of Use",
+      videos: [],
       sections: [{ id: createId("rules-section"), title: "New section", subtitle: "", body: "", note: "" }],
     });
   }
@@ -2551,10 +2992,14 @@ function showAddBlockMenu() {
       id: createId("flows"),
       type: "flows",
       title: "Flow Diagrams",
+      videos: [],
+      legend: deepClone(DEFAULT_STATE.blocks.find((item) => item.type === "flows").legend),
       flows: [
         {
           id: createId("flow"),
           title: "New flow",
+          exampleLabel: "Example",
+          exampleTargetId: "",
           rows: [
             {
               id: createId("flow-row"),
@@ -2575,6 +3020,7 @@ function showAddBlockMenu() {
       id: newId,
       type: "calloutGroup",
       title: "New callout group",
+      videos: [],
     });
   }
   if (choice.type === "adminTools") {
@@ -2584,12 +3030,12 @@ function showAddBlockMenu() {
     }
     state.blocks.push({ id: createId("admin"), type: "adminTools", title: "Admin Tools" });
   }
-  if (choice.type === "youtube") {
+  if (choice.type === "video") {
     state.blocks.push({
-      id: createId("youtube"),
-      type: "youtube",
-      title: "YouTube",
-      url: "",
+      id: createId("video"),
+      type: "video",
+      title: "Video",
+      videos: [],
     });
   }
   render();
@@ -2603,20 +3049,8 @@ addBlockBtn.addEventListener("click", () => {
   showAddBlockMenu();
 });
 
-expandAllBtn.addEventListener("click", () => {
-  document.querySelectorAll(".callout-card").forEach((card) => {
-    card.classList.add("expanded");
-    if (card.dataset.cardId) {
-      expandedIds.add(card.dataset.cardId);
-    }
-  });
-});
-
-collapseAllBtn.addEventListener("click", () => {
-  document.querySelectorAll(".callout-card").forEach((card) => {
-    card.classList.remove("expanded");
-  });
-  expandedIds.clear();
+window.addEventListener("resize", () => {
+  updateScrollOffset();
 });
 
 window.addEventListener("resize", () => {
