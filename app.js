@@ -507,7 +507,7 @@ function createId(prefix) {
 function loadState() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) {
-    return structuredClone(DEFAULT_STATE);
+    return deepClone(DEFAULT_STATE);
   }
   try {
     const parsed = JSON.parse(stored);
@@ -520,11 +520,11 @@ function loadState() {
   } catch (error) {
     console.warn("Failed to parse stored data", error);
   }
-  return structuredClone(DEFAULT_STATE);
+  return deepClone(DEFAULT_STATE);
 }
 
 function migrateLegacyCallouts(callouts) {
-  const nextState = structuredClone(DEFAULT_STATE);
+  const nextState = deepClone(DEFAULT_STATE);
   const groupMap = new Map(
     nextState.blocks
       .filter((block) => block.type === "calloutGroup")
@@ -564,6 +564,13 @@ function loadNameEdit() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function deepClone(value) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value));
 }
 
 function updateAdminUI() {
@@ -937,8 +944,6 @@ function renderFlowsBlock(block, index) {
       flowActions.appendChild(removeFlow);
       card.appendChild(flowActions);
     }
-    importInput.value = "";
-  });
 
     body.appendChild(card);
   });
@@ -1239,7 +1244,7 @@ function renderAdminToolsBlock(block, index) {
   resetBtn.textContent = "Reset to default";
   resetBtn.addEventListener("click", () => {
     if (confirm("Reset all blocks, call-outs, and layout to default?")) {
-      state = structuredClone(DEFAULT_STATE);
+      state = deepClone(DEFAULT_STATE);
       saveState();
       render();
     }
@@ -1506,8 +1511,15 @@ function renderCalloutCard(item) {
 
   body.appendChild(
     renderField("Call name", item.callName, (value) => {
+      const previousId = card.dataset.cardId;
       item.callName = value;
-      render();
+      name.textContent = value || "New call";
+      const nextId = `${item.groupId}-${item.callName}`;
+      card.dataset.cardId = nextId;
+      if (previousId && expandedIds.has(previousId)) {
+        expandedIds.delete(previousId);
+        expandedIds.add(nextId);
+      }
     }, {
       type: "text",
       editable: adminMode && allowNameEdit,
