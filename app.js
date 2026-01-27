@@ -2722,6 +2722,7 @@ function buildViewerBlock(block, sourceState) {
   }
 
   if (block.type === "flows") {
+    const legend = block.legend || {};
     return `
       <section class="panel" id="${block.id}" data-title="${escapeHtml(block.title || "Flows")}">
         <div class="panel-header">
