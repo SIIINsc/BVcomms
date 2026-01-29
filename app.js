@@ -4,7 +4,20 @@ const STORAGE_KEY = "scscp_state";
 const ADMIN_KEY = "scscp_admin";
 const THEME_KEY = "scscp_theme";
 const MODE_KEY = "scscp_view_mode";
-const ROLE_KEYS = ["shotCaller", "yourself", "enemyTarget"];
+const ROLE_COLOR_OPTIONS = [
+  { label: "Azure", value: "#4cc3ff" },
+  { label: "Violet", value: "#9e62ff" },
+  { label: "Crimson", value: "#ff6b6b" },
+  { label: "Slate", value: "#8fa1b8" },
+  { label: "Steel", value: "#7f93ad" },
+  { label: "Pearl", value: "#b6c4d6" },
+  { label: "Teal", value: "#5fa6a0" },
+  { label: "Amber", value: "#c39a5f" },
+  { label: "Rust", value: "#b36a4c" },
+  { label: "Olive", value: "#8d9960" },
+];
+const ONLINE_BUILD = Boolean(window.__ONLINE_BUILD__);
+const ONLINE_AUTH_KEY = "scscp_online_auth";
 const VISIBILITY_OPTIONS = [
   { value: "basic", label: "Basic only" },
   { value: "both", label: "Basic + Advanced" },
@@ -32,10 +45,14 @@ const DEFAULT_STATE = {
     theme: "stanton",
     viewMode: "basic",
   },
-  roleLabels: {
-    shotCaller: "Shot caller",
-    yourself: "Yourself",
-    enemyTarget: "Enemy target",
+  roleLabels: [
+    { id: "shotCaller", label: "Shot caller", color: "#9e62ff" },
+    { id: "yourself", label: "Yourself", color: "#4cc3ff" },
+    { id: "enemyTarget", label: "Enemy target", color: "#ff6b6b" },
+  ],
+  onlineAuth: {
+    username: "SIIIN",
+    password: "1111",
   },
   footer: {
     lines: ["How to run: open index.html directly in a browser."],
@@ -515,33 +532,17 @@ const THEMES = {
   pyro: {
     label: "Pyro",
     colors: {
-      "--bg": "#11100e",
-      "--panel": "#1b1a17",
-      "--panel-elev": "#24211d",
-      "--line": "#332f2a",
-      "--text": "#f3e9dc",
-      "--muted": "#b9a99a",
-      "--accent": "#c07645",
-      "--accent-strong": "#d5965a",
-      "--danger": "#c65b4b",
-      "--success": "#b7a35a",
-      "--warning": "#d4a15b",
-    },
-  },
-  nyx: {
-    label: "Nyx",
-    colors: {
-      "--bg": "#050a14",
-      "--panel": "#0d1626",
-      "--panel-elev": "#132034",
-      "--line": "#1f2f4d",
-      "--text": "#f3f7ff",
-      "--muted": "#9fb3d3",
-      "--accent": "#7fcfff",
-      "--accent-strong": "#b5e6ff",
-      "--danger": "#ff8a8a",
-      "--success": "#7dffc4",
-      "--warning": "#ffd892",
+      "--bg": "#0e0c0a",
+      "--panel": "#171512",
+      "--panel-elev": "#201d19",
+      "--line": "#2f2a24",
+      "--text": "#f2e8dc",
+      "--muted": "#b5a79a",
+      "--accent": "#c7864c",
+      "--accent-strong": "#d5a061",
+      "--danger": "#c5604a",
+      "--success": "#b99a5a",
+      "--warning": "#d1a35f",
     },
   },
 };
@@ -659,10 +660,17 @@ function normalizeState(source) {
   };
   nextState.ui.theme = resolveThemeName(nextState.ui.theme || "stanton");
   nextState.ui.viewMode = normalizeViewMode(nextState.ui.viewMode || "basic");
-  nextState.roleLabels = {
-    ...deepClone(DEFAULT_STATE.roleLabels),
-    ...(nextState.roleLabels || {}),
+  nextState.roleLabels = normalizeRoleLabels(nextState.roleLabels);
+  nextState.onlineAuth = {
+    ...deepClone(DEFAULT_STATE.onlineAuth),
+    ...(nextState.onlineAuth || {}),
   };
+  if (typeof nextState.onlineAuth.username !== "string") {
+    nextState.onlineAuth.username = DEFAULT_STATE.onlineAuth.username;
+  }
+  if (typeof nextState.onlineAuth.password !== "string") {
+    nextState.onlineAuth.password = DEFAULT_STATE.onlineAuth.password;
+  }
 
   nextState.callouts = (nextState.callouts || []).map((callout) => {
     const normalizedVideos = (callout.videos || []).map((video) => ({
@@ -793,7 +801,68 @@ function normalizeState(source) {
 }
 
 function loadAdmin() {
+  if (ONLINE_BUILD) {
+    return localStorage.getItem(ONLINE_AUTH_KEY) === "true";
+  }
   return localStorage.getItem(ADMIN_KEY) === "true";
+}
+
+function normalizeRoleLabels(value) {
+  const defaults = deepClone(DEFAULT_STATE.roleLabels);
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((entry) => {
+        if (!entry) {
+          return null;
+        }
+        if (typeof entry === "string") {
+          return {
+            id: createId("role"),
+            label: entry,
+            color: ROLE_COLOR_OPTIONS[0].value,
+          };
+        }
+        return {
+          id: entry.id || createId("role"),
+          label: typeof entry.label === "string" ? entry.label : "Role",
+          color: typeof entry.color === "string" ? entry.color : ROLE_COLOR_OPTIONS[0].value,
+        };
+      })
+      .filter(Boolean);
+    return normalized.length ? normalized : defaults;
+  }
+  if (value && typeof value === "object") {
+    const used = new Set();
+    const mapped = defaults.map((role, index) => {
+      used.add(role.id);
+      return {
+        ...role,
+        label: typeof value[role.id] === "string" ? value[role.id] : role.label,
+        color: role.color || ROLE_COLOR_OPTIONS[index % ROLE_COLOR_OPTIONS.length].value,
+      };
+    });
+    Object.entries(value).forEach(([key, label]) => {
+      if (used.has(key)) {
+        return;
+      }
+      mapped.push({
+        id: key,
+        label: typeof label === "string" ? label : "Role",
+        color: ROLE_COLOR_OPTIONS[mapped.length % ROLE_COLOR_OPTIONS.length].value,
+      });
+    });
+    return mapped;
+  }
+  return defaults;
+}
+
+function getRoleLabels(sourceState = state) {
+  return normalizeRoleLabels(sourceState.roleLabels);
+}
+
+function getRoleMeta(roleId, sourceState = state) {
+  const roles = getRoleLabels(sourceState);
+  return roles.find((role) => role.id === roleId) || null;
 }
 
 function normalizeViewMode(mode) {
@@ -816,7 +885,7 @@ function resolveThemeName(themeName) {
     blue: "stanton",
     green: "grimhex",
     amber: "pyro",
-    violet: "nyx",
+    violet: "stanton",
   };
   const normalized = legacyMap[themeName] || themeName;
   return THEMES[normalized] ? normalized : "stanton";
@@ -901,9 +970,14 @@ function deepClone(value) {
 }
 
 function updateAdminUI() {
-  adminStatus.textContent = adminMode ? "Edit mode" : "Viewer mode";
-  adminStatus.style.color = adminMode ? "var(--success)" : "var(--muted)";
-  adminToggle.textContent = adminMode ? "Exit edit" : "Edit";
+  if (adminStatus) {
+    adminStatus.textContent = adminMode ? "Edit mode" : "Viewer mode";
+    adminStatus.style.color = adminMode ? "var(--success)" : "var(--muted)";
+    adminStatus.style.display = adminMode ? "inline-flex" : "none";
+  }
+  if (adminToggle) {
+    adminToggle.textContent = adminMode ? "Exit edit" : "Edit";
+  }
   document.body.classList.toggle("admin-active", adminMode);
   if (!adminMode) {
     editingBlocks = new Set();
@@ -974,11 +1048,17 @@ function renderHeader() {
   wrapper.className = "header-text";
 
   if (adminMode) {
-    wrapper.appendChild(
+    const eyebrowRow = document.createElement("div");
+    eyebrowRow.className = "header-eyebrow-row";
+    eyebrowRow.appendChild(
       createInlineInput("eyebrow", state.header.eyebrow, (value) => {
         state.header.eyebrow = value;
       })
     );
+    if (headerModeToggle) {
+      eyebrowRow.appendChild(headerModeToggle);
+    }
+    wrapper.appendChild(eyebrowRow);
     wrapper.appendChild(
       createInlineInput("title", state.header.title, (value) => {
         state.header.title = value;
@@ -1044,9 +1124,15 @@ function renderHeader() {
     logoEditor.appendChild(altInput);
     wrapper.appendChild(logoEditor);
   } else {
+    const eyebrowRow = document.createElement("div");
+    eyebrowRow.className = "header-eyebrow-row";
     const eyebrow = document.createElement("p");
     eyebrow.className = "eyebrow";
     eyebrow.textContent = state.header.eyebrow;
+    eyebrowRow.appendChild(eyebrow);
+    if (headerModeToggle) {
+      eyebrowRow.appendChild(headerModeToggle);
+    }
 
     const title = document.createElement("h1");
     title.textContent = state.header.title;
@@ -1059,7 +1145,7 @@ function renderHeader() {
     intro.className = "header-intro";
     intro.textContent = state.header.intro;
 
-    wrapper.appendChild(eyebrow);
+    wrapper.appendChild(eyebrowRow);
     wrapper.appendChild(title);
     wrapper.appendChild(subhead);
     wrapper.appendChild(intro);
@@ -1220,32 +1306,49 @@ function renderAdminBox() {
   donateRow.appendChild(donateUrlInput);
   donateSection.appendChild(donateRow);
 
-  const lockSection = document.createElement("div");
-  lockSection.className = "admin-section";
-  const lockTitle = document.createElement("div");
-  lockTitle.className = "admin-section-title";
-  lockTitle.textContent = "Role labels";
-  lockSection.appendChild(lockTitle);
+  let onlineSection = null;
+  if (!ONLINE_BUILD) {
+    onlineSection = document.createElement("div");
+    onlineSection.className = "admin-section";
+    const onlineTitle = document.createElement("div");
+    onlineTitle.className = "admin-section-title";
+    onlineTitle.textContent = "Online build";
+    onlineSection.appendChild(onlineTitle);
 
-  const roleRow = document.createElement("div");
-  roleRow.className = "admin-row";
-  const roleTitle = document.createElement("span");
-  roleTitle.className = "admin-note";
-  roleTitle.textContent = "Role labels";
-  roleRow.appendChild(roleTitle);
-  ROLE_KEYS.forEach((role) => {
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = state.roleLabels[role] || "";
-    input.placeholder = role;
-    input.className = "panel-title-input";
-    input.addEventListener("input", () => {
-      state.roleLabels[role] = input.value;
-      render();
+    const onlineRow = document.createElement("div");
+    onlineRow.className = "admin-row";
+    const usernameInput = document.createElement("input");
+    usernameInput.type = "text";
+    usernameInput.className = "panel-title-input";
+    usernameInput.placeholder = "Admin username";
+    usernameInput.value = state.onlineAuth.username || "";
+    usernameInput.addEventListener("input", () => {
+      state.onlineAuth.username = usernameInput.value;
     });
-    roleRow.appendChild(input);
-  });
-  lockSection.appendChild(roleRow);
+    const passwordInput = document.createElement("input");
+    passwordInput.type = "password";
+    passwordInput.className = "panel-title-input";
+    passwordInput.placeholder = "Admin password";
+    passwordInput.value = state.onlineAuth.password || "";
+    passwordInput.addEventListener("input", () => {
+      state.onlineAuth.password = passwordInput.value;
+    });
+    onlineRow.appendChild(usernameInput);
+    onlineRow.appendChild(passwordInput);
+    onlineSection.appendChild(onlineRow);
+
+    const onlineActions = document.createElement("div");
+    onlineActions.className = "admin-row";
+    const onlineExportBtn = document.createElement("button");
+    onlineExportBtn.className = "btn btn-outline";
+    onlineExportBtn.type = "button";
+    onlineExportBtn.textContent = "Generate Online Build";
+    onlineExportBtn.addEventListener("click", () => {
+      handleExportOnlineZip();
+    });
+    onlineActions.appendChild(onlineExportBtn);
+    onlineSection.appendChild(onlineActions);
+  }
 
   const actionSection = document.createElement("div");
   actionSection.className = "admin-section";
@@ -1423,7 +1526,9 @@ function renderAdminBox() {
 
   adminBox.appendChild(headerSection);
   adminBox.appendChild(donateSection);
-  adminBox.appendChild(lockSection);
+  if (onlineSection) {
+    adminBox.appendChild(onlineSection);
+  }
   adminBox.appendChild(actionSection);
 }
 
@@ -1696,6 +1801,77 @@ function renderRuleMedia(section, editable) {
   return wrap;
 }
 
+function renderOnlineAdminEntry() {
+  if (!ONLINE_BUILD) {
+    return null;
+  }
+  const container = document.createElement("div");
+  container.className = "online-admin-entry";
+
+  if (adminMode) {
+    const logoutBtn = document.createElement("button");
+    logoutBtn.className = "btn btn-ghost btn-compact";
+    logoutBtn.type = "button";
+    logoutBtn.textContent = "Logout";
+    logoutBtn.addEventListener("click", () => {
+      adminMode = false;
+      localStorage.removeItem(ONLINE_AUTH_KEY);
+      updateAdminUI();
+    });
+    container.appendChild(logoutBtn);
+    return container;
+  }
+
+  const details = document.createElement("details");
+  details.className = "online-admin-details";
+  const summary = document.createElement("summary");
+  summary.textContent = "Admin";
+  details.appendChild(summary);
+
+  const form = document.createElement("form");
+  form.className = "online-admin-form";
+  const userInput = document.createElement("input");
+  userInput.type = "text";
+  userInput.placeholder = "Username";
+  userInput.autocomplete = "username";
+  const passInput = document.createElement("input");
+  passInput.type = "password";
+  passInput.placeholder = "Password";
+  passInput.autocomplete = "current-password";
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.className = "btn btn-outline btn-compact";
+  submit.textContent = "Login";
+  const message = document.createElement("span");
+  message.className = "online-admin-message";
+  form.appendChild(userInput);
+  form.appendChild(passInput);
+  form.appendChild(submit);
+  form.appendChild(message);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const auth = window.__ONLINE_AUTH__ || state.onlineAuth || DEFAULT_STATE.onlineAuth;
+    const userMatch = userInput.value === auth.username;
+    const passMatch = passInput.value === auth.password;
+    if (userMatch && passMatch) {
+      adminMode = true;
+      localStorage.setItem(ONLINE_AUTH_KEY, "true");
+      message.textContent = "";
+      updateAdminUI();
+      details.removeAttribute("open");
+      userInput.value = "";
+      passInput.value = "";
+    } else {
+      message.textContent = "Invalid login";
+    }
+  });
+
+  details.appendChild(form);
+  container.appendChild(details);
+  return container;
+}
+
 function renderFooter() {
   footerContent.innerHTML = "";
   if (!adminMode) {
@@ -1710,6 +1886,10 @@ function renderFooter() {
       note.className = "footer-note";
       note.textContent = state.footer.note;
       footerContent.appendChild(note);
+    }
+    const onlineEntry = renderOnlineAdminEntry();
+    if (onlineEntry) {
+      footerContent.appendChild(onlineEntry);
     }
     return;
   }
@@ -1759,6 +1939,10 @@ function renderFooter() {
   editor.appendChild(note);
 
   footerContent.appendChild(editor);
+  const onlineEntry = renderOnlineAdminEntry();
+  if (onlineEntry) {
+    footerContent.appendChild(onlineEntry);
+  }
 }
 
 function renderNav() {
@@ -1961,6 +2145,99 @@ function renderRulesBlock(block, index) {
   return section;
 }
 
+function renderRoleLabelsEditor() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "role-labels-editor";
+
+  const title = document.createElement("div");
+  title.className = "role-labels-title";
+  title.textContent = "Role Labels";
+  wrapper.appendChild(title);
+
+  const list = document.createElement("div");
+  list.className = "role-labels-list";
+
+  const roles = getRoleLabels();
+  roles.forEach((role, index) => {
+    const row = document.createElement("div");
+    row.className = "role-label-row";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "panel-title-input";
+    nameInput.placeholder = "Role name";
+    nameInput.value = role.label || "";
+    nameInput.addEventListener("input", () => {
+      role.label = nameInput.value;
+      state.roleLabels = roles;
+      render();
+    });
+
+    const colorSelect = document.createElement("select");
+    colorSelect.className = "role-color-select";
+    ROLE_COLOR_OPTIONS.forEach((optionItem) => {
+      const option = document.createElement("option");
+      option.value = optionItem.value;
+      option.textContent = optionItem.label;
+      option.selected = optionItem.value === (role.color || ROLE_COLOR_OPTIONS[0].value);
+      colorSelect.appendChild(option);
+    });
+    if (role.color && !ROLE_COLOR_OPTIONS.some((optionItem) => optionItem.value === role.color)) {
+      const customOption = document.createElement("option");
+      customOption.value = role.color;
+      customOption.textContent = "Custom";
+      customOption.selected = true;
+      colorSelect.appendChild(customOption);
+    }
+    colorSelect.addEventListener("change", () => {
+      role.color = colorSelect.value;
+      state.roleLabels = roles;
+      render();
+    });
+
+    const colorPreview = document.createElement("span");
+    colorPreview.className = "role-color-preview";
+    colorPreview.style.backgroundColor = role.color || ROLE_COLOR_OPTIONS[0].value;
+    colorSelect.addEventListener("change", () => {
+      colorPreview.style.backgroundColor = colorSelect.value;
+    });
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn btn-ghost";
+    removeBtn.type = "button";
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", () => {
+      roles.splice(index, 1);
+      state.roleLabels = roles.length ? roles : deepClone(DEFAULT_STATE.roleLabels);
+      render();
+    });
+
+    row.appendChild(nameInput);
+    row.appendChild(colorPreview);
+    row.appendChild(colorSelect);
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "btn btn-outline";
+  addBtn.type = "button";
+  addBtn.textContent = "Add role label";
+  addBtn.addEventListener("click", () => {
+    roles.push({
+      id: createId("role"),
+      label: "New role",
+      color: ROLE_COLOR_OPTIONS[roles.length % ROLE_COLOR_OPTIONS.length].value,
+    });
+    state.roleLabels = roles;
+    render();
+  });
+
+  wrapper.appendChild(list);
+  wrapper.appendChild(addBtn);
+  return wrapper;
+}
+
 function renderFlowsBlock(block, index) {
   const section = document.createElement("section");
   section.className = "panel";
@@ -1992,6 +2269,10 @@ function renderFlowsBlock(block, index) {
 
   const body = document.createElement("div");
   body.className = "panel-body flow-grid";
+
+  if (editing) {
+    body.appendChild(renderRoleLabelsEditor());
+  }
 
   block.flows.forEach((flow, flowIndex) => {
     const hasRows = (flow.rows || []).some((row) => !isFlowRowEmpty(row));
@@ -2304,12 +2585,16 @@ function renderFlowRow(flow, row, rowIndex, editing) {
       nodeWrap.className = "flow-node-wrap";
       const label = document.createElement("div");
       label.className = "flow-role-label";
-      label.textContent = state.roleLabels[element.role] || "Role";
+      const roleMeta = getRoleMeta(element.role) || {};
+      label.textContent = roleMeta.label || "Role";
+      if (roleMeta.color) {
+        label.style.color = roleMeta.color;
+      }
       const node = document.createElement("span");
       const roleClass =
         element.role === "shotCaller" ? "role-shot" : element.role === "enemyTarget" ? "role-enemy" : "role-yourself";
       node.className = `flow-node ${roleClass}`;
-      const nodeStyles = getNodeStyles(element);
+      const nodeStyles = getNodeStyles(element, roleMeta.color);
       if (nodeStyles) {
         node.style.cssText = nodeStyles;
       }
@@ -2393,13 +2678,21 @@ function renderFlowRow(flow, row, rowIndex, editing) {
     let extraControl = document.createElement("span");
     if (element.type === "node") {
       const roleSelect = document.createElement("select");
-      ROLE_KEYS.forEach((role) => {
+      const roleOptions = getRoleLabels();
+      roleOptions.forEach((role) => {
         const option = document.createElement("option");
-        option.value = role;
-        option.textContent = state.roleLabels[role] || role;
-        option.selected = role === (element.role || "yourself");
+        option.value = role.id;
+        option.textContent = role.label || role.id;
+        option.selected = role.id === (element.role || "yourself");
         roleSelect.appendChild(option);
       });
+      if (element.role && !roleOptions.some((role) => role.id === element.role)) {
+        const legacyOption = document.createElement("option");
+        legacyOption.value = element.role;
+        legacyOption.textContent = element.role;
+        legacyOption.selected = true;
+        roleSelect.appendChild(legacyOption);
+      }
       roleSelect.addEventListener("change", () => {
         element.role = roleSelect.value;
         render();
@@ -3287,6 +3580,27 @@ async function handleExportZip() {
   URL.revokeObjectURL(url);
 }
 
+async function handleExportOnlineZip() {
+  const [styles, script] = await Promise.all([getStylesheetText(), getScriptText()]);
+  const indexHtml = buildOnlineIndexHtml(state);
+  const readme = buildOnlineReadme(state);
+  const files = [
+    { name: "index.html", content: indexHtml },
+    { name: "styles.css", content: styles },
+    { name: "app.js", content: script },
+    { name: "README.md", content: readme },
+  ];
+  const zipBlob = createZipBlob(files);
+  const url = URL.createObjectURL(zipBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "scscp-online-build.zip";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function buildViewerHtml(sourceState, styles) {
   const logoHtml = sourceState.header.logoSrc
     ? `<img class="header-logo" src="${escapeHtml(sourceState.header.logoSrc)}" alt="${escapeHtml(sourceState.header.logoAlt || "Header logo")}" />`
@@ -3314,7 +3628,16 @@ function buildViewerHtml(sourceState, styles) {
         <div class="header-brand">
           ${logoHtml}
           <div class="header-text">
-            <p class="eyebrow">${escapeHtml(sourceState.header.eyebrow)}</p>
+            <div class="header-eyebrow-row">
+              <p class="eyebrow">${escapeHtml(sourceState.header.eyebrow)}</p>
+              <div class="mode-toggle" id="headerModeToggle">
+                <span class="mode-toggle-label">Basic / Advanced</span>
+                <div class="mode-toggle-buttons">
+                  <button class="mode-btn" type="button" data-mode="basic">Basic</button>
+                  <button class="mode-btn" type="button" data-mode="advanced">Advanced</button>
+                </div>
+              </div>
+            </div>
             <h1>${escapeHtml(sourceState.header.title)}</h1>
             <p class="subhead">${escapeHtml(sourceState.header.subtitle)}</p>
             <p class="header-intro">${escapeHtml(sourceState.header.intro)}</p>
@@ -3328,15 +3651,7 @@ function buildViewerHtml(sourceState, styles) {
                 ${themeOptions}
               </select>
             </div>
-            <div class="mode-toggle" id="headerModeToggle">
-              <span class="mode-toggle-label">Basic / Advanced</span>
-              <div class="mode-toggle-buttons">
-                <button class="mode-btn" type="button" data-mode="basic">Basic</button>
-                <button class="mode-btn" type="button" data-mode="advanced">Advanced</button>
-              </div>
-            </div>
             ${donateButton ? `<div class="header-donate-slot">${donateButton}</div>` : ""}
-            <div class="status-pill">Viewer mode</div>
           </div>
         </div>
       </div>
@@ -3524,6 +3839,63 @@ function buildExportIndexHtml(sourceState) {
 </html>`;
 }
 
+function buildOnlineIndexHtml(sourceState) {
+  const exportedState = {
+    ...sourceState,
+    ui: {
+      ...(sourceState.ui || {}),
+      theme: activeTheme,
+    },
+  };
+  const auth = {
+    username: sourceState.onlineAuth?.username || DEFAULT_STATE.onlineAuth.username,
+    password: sourceState.onlineAuth?.password || DEFAULT_STATE.onlineAuth.password,
+  };
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(exportedState.header.title)}</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-main">
+        <div id="headerContent"></div>
+        <div class="header-controls">
+          <div class="header-actions">
+            <div class="theme-control">
+              <label for="themeSelect">Theme</label>
+              <select id="themeSelect"></select>
+            </div>
+            <div id="headerModeToggle" class="mode-toggle"></div>
+            <div id="headerDonateSlot" class="header-donate-slot"></div>
+          </div>
+        </div>
+      </div>
+      <div id="headerSocials" class="header-socials"></div>
+      <nav class="category-nav" id="categoryNav"></nav>
+    </header>
+
+    <section id="adminBox" class="admin-box panel"></section>
+
+    <main id="blocksContainer"></main>
+
+    <footer class="site-footer">
+      <div id="footerContent"></div>
+    </footer>
+
+    <script>
+      window.__EXPORTED_STATE__ = ${JSON.stringify(exportedState)};
+      window.__ONLINE_BUILD__ = true;
+      window.__ONLINE_AUTH__ = ${JSON.stringify(auth)};
+    </script>
+    <script src="app.js"></script>
+  </body>
+</html>`;
+}
+
 function buildExportReadme(sourceState) {
   return `# Space Combat Communication Protocol Template
 
@@ -3536,7 +3908,7 @@ function buildExportReadme(sourceState) {
 The state is serialized under \`${STORAGE_KEY}\` as JSON. Key areas:
 - \`header\`: eyebrow/title/subtitle/intro, logo, background image, and three social icons.
 - \`ui\`: current theme name.
-- \`roleLabels\`: labels used in Example Box nodes.
+- \`roleLabels\`: labels (name + color) used in Example Box nodes.
 - \`blocks\`: ordered list of Information Boxes, Example Boxes, Study Boxes, and video blocks.
 - \`callouts\`: Elements that belong to Study Boxes via \`groupId\`.
 
@@ -3554,6 +3926,27 @@ The state is serialized under \`${STORAGE_KEY}\` as JSON. Key areas:
 ## Notes
 - Uploads are base64-encoded for offline use.
 - The exported state is embedded in \`index.html\` via \`window.__EXPORTED_STATE__\` to make this ZIP immediately runnable.`;
+}
+
+function buildOnlineReadme(sourceState) {
+  return `# Space Combat Communication Protocol Online Build
+
+## Overview
+- \`index.html\`: Page layout and entry point with online-mode flags.
+- \`styles.css\`: Theme, layout, and component styling (dark, card-based UI).
+- \`app.js\`: Application logic, rendering, admin tools, and localStorage persistence.
+
+## How to use
+1. Upload the folder to any static host or open \`index.html\` locally.
+2. The page loads in viewer mode by default.
+3. Use the subtle admin link at the bottom of the page to log in and enable edit mode.
+
+## Admin credentials
+- Username: \`${escapeHtml(sourceState.onlineAuth?.username || DEFAULT_STATE.onlineAuth.username)}\`
+- Password: \`${escapeHtml(sourceState.onlineAuth?.password || DEFAULT_STATE.onlineAuth.password)}\`
+
+## Security note
+This is a static site, so the login gate is **client-side only** and not real security. For production, use server-side protection such as basic auth/htpasswd or platform password protection.`;
 }
 
 function createZipBlob(files) {
@@ -3773,15 +4166,20 @@ function buildViewerBlock(block, sourceState) {
                         .map((element, index) => {
                           if (element.type === "node") {
                             const roleClass =
-                              element.role === "shotCaller" ? "role-shot" : element.role === "enemyTarget" ? "role-enemy" : "role-yourself";
-                            const label = sourceState.roleLabels?.[element.role] || "Role";
-                            const inlineStyles = getNodeStyles(element);
+                              element.role === "shotCaller"
+                                ? "role-shot"
+                                : element.role === "enemyTarget"
+                                  ? "role-enemy"
+                                  : "role-yourself";
+                            const roleMeta = getRoleMeta(element.role, sourceState) || {};
+                            const label = roleMeta.label || "Role";
+                            const inlineStyles = getNodeStyles(element, roleMeta.color);
                             const next = row.elements[index + 1];
                             const autoArrow =
                               next && next.type === "node" ? '<span class="flow-arrow">→</span>' : "";
                             return `
                               <div class="flow-node-wrap">
-                                <div class="flow-role-label">${escapeHtml(label)}</div>
+                                <div class="flow-role-label"${roleMeta.color ? ` style="color:${escapeHtml(roleMeta.color)};"` : ""}>${escapeHtml(label)}</div>
                                 <span class="flow-node ${roleClass}"${inlineStyles ? ` style="${inlineStyles}"` : ""}>${escapeHtml(element.text)}</span>
                               </div>
                             ${autoArrow}`;
@@ -3956,6 +4354,10 @@ function getYouTubeEmbedUrl(url) {
 }
 
 function getRoleDefaultColor(role) {
+  const roleMeta = getRoleMeta(role);
+  if (roleMeta?.color) {
+    return roleMeta.color;
+  }
   if (role === "shotCaller") {
     return "#9e62ff";
   }
@@ -3976,11 +4378,14 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function getNodeStyles(element) {
-  if (!element || !element.color) {
+function getNodeStyles(element, fallbackColor) {
+  if (!element) {
     return "";
   }
-  const color = element.color;
+  const color = element.color || fallbackColor;
+  if (!color) {
+    return "";
+  }
   return `border-color: ${color}; background-color: ${hexToRgba(color, 0.18)};`;
 }
 
@@ -4043,9 +4448,11 @@ function handleImport(file) {
   reader.readAsText(file);
 }
 
-adminToggle.addEventListener("click", () => {
-  toggleAdmin();
-});
+if (adminToggle) {
+  adminToggle.addEventListener("click", () => {
+    toggleAdmin();
+  });
+}
 
 window.addEventListener("resize", () => {
   updateScrollOffset();
