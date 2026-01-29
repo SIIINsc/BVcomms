@@ -4,14 +4,10 @@
 Open `index.html` directly in your browser (double-click). No build tools or servers required.
 
 ## Admin lock disclaimer (important)
-This is a **static offline site**. The admin password is **convenience-only** to prevent accidental edits. It is **not true security** and does not protect against someone who can open and edit the files directly.
+This is a **static offline site**. Edit mode is a convenience toggle intended to prevent accidental edits. It is **not true security** and does not protect against someone who can open and edit the files directly.
 
-## Admin password hash
-Only a SHA-256 hash is stored in `app.js` as `ADMIN_PASSWORD_HASH`. To generate a new hash in the browser console:
+## Online build (static hosting)
+Open the editor, click **Edit**, and use **Generate Online Build** in the admin panel to download a hosting-ready ZIP. The online build includes a subtle admin login link at the bottom of the page that unlocks edit mode using the credentials you set in the offline editor.
 
-```js
-crypto.subtle.digest('SHA-256', new TextEncoder().encode('YOUR_PASSWORD'))
-  .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''))
-```
-
-Replace the hash in `app.js` with the output string.
+## Security note
+Because this is a static HTML/CSS/JS project, the online login is **client-side only** and not real security. For production hosting, add server-side protection (basic auth/htpasswd or platform password protection).
