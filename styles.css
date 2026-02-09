@@ -26,6 +26,28 @@ body {
   min-height: 100vh;
 }
 
+
+.boot-error,
+.boot-warning {
+  margin: 0.9rem 1.4rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 0.85rem;
+}
+
+.boot-error {
+  background: rgba(255, 107, 107, 0.12);
+  border-color: var(--danger);
+  color: #ffd4d4;
+}
+
+.boot-warning {
+  background: rgba(255, 206, 107, 0.12);
+  border-color: var(--warning);
+  color: #ffe4a6;
+}
+
 h1,
 h2,
 h3 {
