@@ -46,8 +46,6 @@ const DEFAULT_STATE = {
     logoSrc: "",
     logoAlt: "Header logo",
     backgroundSrc: "",
-    donateEnabled: false,
-    donateUrl: "",
     socialIcons: [
       { src: "", url: "" },
       { src: "", url: "" },
@@ -630,7 +628,6 @@ const adminBox = document.getElementById("adminBox");
 const headerSocials = document.getElementById("headerSocials");
 const pageNav = document.getElementById("pageNav");
 const headerModeToggle = document.getElementById("headerModeToggle");
-const headerDonateSlot = document.getElementById("headerDonateSlot");
 const siteHeader = document.querySelector(".site-header");
 
 function createId(prefix) {
@@ -835,10 +832,6 @@ function setSubPageDisplay(pageId, value, sourceState = state) {
   }
   if (sourceState?.pages && sourceState.pages[pageId]) {
     sourceState.pages[pageId].title = next;
-    sourceState.pages[pageId].hero = sourceState.pages[pageId].hero || { title: next, subtitle: "", items: [createDefaultHeroItem("text")] };
-    if (!sourceState.pages[pageId].hero.title) {
-      sourceState.pages[pageId].hero.title = next;
-    }
   }
 }
 
@@ -863,12 +856,16 @@ function renderEditableText(tag, value, onChange, options = {}) {
   node.className = options.className || "";
   const text = typeof value === "string" && value.length ? value : (options.placeholder || "");
   node.textContent = text;
+  if (options.multiline) {
+    node.style.whiteSpace = "pre-wrap";
+  }
   if (adminMode && options.editable !== false) {
     node.setAttribute("contenteditable", "true");
     node.classList.add("click-edit");
     node.addEventListener("input", () => {
-      onChange(node.textContent || "");
-      if (options.onInput) options.onInput(node.textContent || "");
+      const value = options.multiline ? (node.innerText || "").replace(/\r/g, "") : (node.textContent || "");
+      onChange(value);
+      if (options.onInput) options.onInput(value);
     });
   }
   return node;
@@ -941,12 +938,6 @@ function normalizeState(source) {
   if (typeof nextState.header.backgroundSrc !== "string") {
     nextState.header.backgroundSrc = "";
   }
-  if (typeof nextState.header.donateEnabled !== "boolean") {
-    nextState.header.donateEnabled = false;
-  }
-  if (typeof nextState.header.donateUrl !== "string") {
-    nextState.header.donateUrl = "";
-  }
   if (!Array.isArray(nextState.header.socialIcons)) {
     nextState.header.socialIcons = deepClone(DEFAULT_STATE.header.socialIcons);
   } else {
@@ -991,10 +982,6 @@ function normalizeState(source) {
   Object.values(nextState.pages || {}).forEach((page) => {
     page.blocks = normalizeBlocks(page.blocks || []);
     page.callouts = normalizeCallouts(page.callouts || []);
-    page.hero = page.hero || { title: page.title || "", subtitle: "", items: [] };
-    page.hero.title = typeof page.hero.title === "string" ? page.hero.title : (page.title || "");
-    page.hero.subtitle = typeof page.hero.subtitle === "string" ? page.hero.subtitle : "";
-    page.hero.items = normalizeHeroItems(page.hero.items || []);
   });
 
   const subIds = new Set(nextState.home.subPages.map((sub) => sub.id));
@@ -1266,6 +1253,7 @@ function updateAdminUI() {
   }
   if (adminToggle) {
     adminToggle.textContent = adminMode ? "Exit edit" : "Edit";
+    adminToggle.style.display = adminMode ? "none" : "inline-flex";
   }
   document.body.classList.toggle("admin-active", adminMode);
   if (!adminMode) {
@@ -1367,27 +1355,14 @@ function renderHeader() {
   wrapper.className = "header-text";
 
   if (adminMode) {
-    const eyebrowRow = document.createElement("div");
-    eyebrowRow.className = "header-eyebrow-row";
-    eyebrowRow.appendChild(
-      createInlineInput("eyebrow", state.header.eyebrow, (value) => {
-        state.header.eyebrow = value;
-      })
-    );
-    wrapper.appendChild(eyebrowRow);
     wrapper.appendChild(
       createInlineInput("title", state.header.title, (value) => {
         state.header.title = value;
       })
     );
     wrapper.appendChild(
-      createInlineInput("subhead", state.header.subtitle, (value) => {
+      createInlineTextarea("subhead", state.header.subtitle, (value) => {
         state.header.subtitle = value;
-      })
-    );
-    wrapper.appendChild(
-      createInlineTextarea("intro", state.header.intro, (value) => {
-        state.header.intro = value;
       })
     );
 
@@ -1440,25 +1415,11 @@ function renderHeader() {
     logoEditor.appendChild(altInput);
     wrapper.appendChild(logoEditor);
   } else {
-    const eyebrowRow = document.createElement("div");
-    eyebrowRow.className = "header-eyebrow-row";
-    const eyebrow = document.createElement("p");
-    eyebrow.className = "eyebrow";
-    eyebrow.textContent = state.header.eyebrow;
-    eyebrowRow.appendChild(eyebrow);
-
     const title = renderEditableText("h1", state.header.title, (value) => { state.header.title = value; }, { className: "header-title" });
 
-    const subhead = renderEditableText("p", state.header.subtitle, (value) => { state.header.subtitle = value; }, { className: "subhead" });
-
-    const intro = document.createElement("p");
-    intro.className = "header-intro";
-    intro.textContent = state.header.intro;
-
-    wrapper.appendChild(eyebrowRow);
+    const subhead = renderEditableText("p", state.header.subtitle, (value) => { state.header.subtitle = value; }, { className: "subhead header-subtitle-multiline", placeholder: "Subtitle", multiline: true });
     wrapper.appendChild(title);
     wrapper.appendChild(subhead);
-    wrapper.appendChild(intro);
   }
 
   brand.appendChild(wrapper);
@@ -1582,41 +1543,6 @@ function renderAdminBox() {
   });
   headerSection.appendChild(socialsRow);
 
-  const donateSection = document.createElement("div");
-  donateSection.className = "admin-section";
-  const donateTitle = document.createElement("div");
-  donateTitle.className = "admin-section-title";
-  donateTitle.textContent = "Support button";
-  donateSection.appendChild(donateTitle);
-
-  const donateRow = document.createElement("div");
-  donateRow.className = "admin-row";
-  const donateToggleLabel = document.createElement("label");
-  donateToggleLabel.className = "toggle";
-  const donateToggle = document.createElement("input");
-  donateToggle.type = "checkbox";
-  donateToggle.checked = Boolean(state.header.donateEnabled);
-  donateToggle.addEventListener("change", () => {
-    state.header.donateEnabled = donateToggle.checked;
-    renderHeaderActions();
-  });
-  const donateToggleText = document.createElement("span");
-  donateToggleText.textContent = "Show Donate Button";
-  donateToggleLabel.appendChild(donateToggle);
-  donateToggleLabel.appendChild(donateToggleText);
-  donateRow.appendChild(donateToggleLabel);
-
-  const donateUrlInput = document.createElement("input");
-  donateUrlInput.type = "text";
-  donateUrlInput.className = "panel-title-input";
-  donateUrlInput.placeholder = "Donate URL (PayPal)";
-  donateUrlInput.value = state.header.donateUrl || "";
-  donateUrlInput.addEventListener("input", () => {
-    state.header.donateUrl = donateUrlInput.value.trim();
-    renderHeaderActions();
-  });
-  donateRow.appendChild(donateUrlInput);
-  donateSection.appendChild(donateRow);
 
   let onlineSection = null;
   if (!ONLINE_BUILD) {
@@ -1833,20 +1759,6 @@ function renderAdminBox() {
   blockRow.appendChild(addStudy);
   blockRow.appendChild(addVideo);
   if (!isHomePage) {
-    const addHeroText = document.createElement("button");
-    addHeroText.className = "btn btn-outline";
-    addHeroText.type = "button";
-    addHeroText.textContent = "Add Hero Title Box";
-    addHeroText.addEventListener("click", () => {
-      const page = getCurrentPage();
-      page.hero = page.hero || { title: page.title || "", subtitle: "", items: [] };
-      page.hero.items = page.hero.items || [];
-      page.hero.items.push(createDefaultHeroItem("text"));
-      render();
-    });
-    blockRow.appendChild(addHeroText);
-  }
-  if (!isHomePage) {
     actionSection.appendChild(blockRow);
   }
 
@@ -1857,7 +1769,6 @@ function renderAdminBox() {
 
   if (isHomePage) {
     adminBox.appendChild(headerSection);
-    adminBox.appendChild(donateSection);
     if (onlineSection) {
       adminBox.appendChild(onlineSection);
     }
@@ -1893,16 +1804,6 @@ function renderHeaderSocials() {
 }
 
 function renderHeaderActions() {
-  const headerHomeSlot = document.getElementById("headerHomeSlot");
-  if (headerHomeSlot) {
-    headerHomeSlot.innerHTML = "";
-    const homeLink = document.createElement("a");
-    homeLink.href = "#home";
-    homeLink.className = `btn btn-outline btn-compact${currentPageId === "home" ? " is-active" : ""}`;
-    homeLink.textContent = "Home";
-    headerHomeSlot.appendChild(homeLink);
-  }
-
   if (headerModeToggle) {
     headerModeToggle.innerHTML = "";
     const wrap = document.createElement("div");
@@ -1920,20 +1821,6 @@ function renderHeaderActions() {
       wrap.appendChild(button);
     });
     headerModeToggle.appendChild(wrap);
-  }
-
-  if (headerDonateSlot) {
-    headerDonateSlot.innerHTML = "";
-    const donateUrl = (state.header.donateUrl || "").trim();
-    if (state.header.donateEnabled && donateUrl) {
-      const donateLink = document.createElement("a");
-      donateLink.className = "btn btn-outline btn-compact header-donate";
-      donateLink.href = donateUrl;
-      donateLink.target = "_blank";
-      donateLink.rel = "noopener noreferrer";
-      donateLink.textContent = "Support";
-      headerDonateSlot.appendChild(donateLink);
-    }
   }
 }
 
@@ -2336,40 +2223,18 @@ function renderHomePage() {
     const body = document.createElement("div");
     body.className = "panel-body home-hero-body";
     body.appendChild(renderEditableText("h2", home.title, (v) => { home.title = v; }, { className: "hero-title-text", placeholder: "Home title" }));
-    body.appendChild(renderEditableText("p", home.subtitle, (v) => { home.subtitle = v; }, { className: "hero-subtitle-text", placeholder: "Home subtitle" }));
-
     if (adminMode) {
       body.appendChild(createImageUploadControl(home.heroBackgroundSrc ? "Replace hero background" : "Upload hero background", (src) => { home.heroBackgroundSrc = src; render(); }, home.heroBackgroundSrc ? () => { home.heroBackgroundSrc = ""; render(); } : null));
-      const splitActions = document.createElement("div");
-      splitActions.className = "home-cta-row";
-      [2, 3].forEach((count) => {
-        const btn = document.createElement("button");
-        btn.className = "btn btn-outline btn-compact";
-        btn.type = "button";
-        btn.textContent = `${count} sections`;
-        btn.addEventListener("click", () => {
-          if (count === 2) {
-            home.heroColumns = normalizeHeroColumns(home.heroColumns).slice(0, 2);
-          } else {
-            const cols = normalizeHeroColumns(home.heroColumns);
-            while (cols.length < 3) cols.push(createDefaultHeroColumn());
-            home.heroColumns = cols.slice(0, 3);
-          }
-          render();
-        });
-        splitActions.appendChild(btn);
-      });
-      body.appendChild(splitActions);
     }
 
-    const cols = normalizeHeroColumns(home.heroColumns);
+    const cols = normalizeHeroColumns(home.heroColumns).slice(0, 2);
     home.heroColumns = cols;
     const split = document.createElement("div");
     split.className = `hero-split hero-split-${cols.length}`;
     cols.forEach((col, index) => {
       const colEl = document.createElement("article");
       colEl.className = "hero-split-col";
-      colEl.appendChild(renderEditableText("p", col.text, (v) => { col.text = v; }, { className: "hero-split-text", placeholder: "Editable text" }));
+      colEl.appendChild(renderEditableText("p", col.text, (v) => { col.text = v; }, { className: "hero-split-text", placeholder: "Editable text", multiline: true }));
       if (col.mediaSrc) {
         if (col.mediaType === "video") {
           const video = document.createElement("video");
@@ -2460,6 +2325,8 @@ function renderHomePage() {
       hoverVideo.muted = true;
       hoverVideo.loop = true;
       hoverVideo.playsInline = true;
+      hoverVideo.preload = "metadata";
+      hoverVideo.pause();
       tile.appendChild(hoverVideo);
     }
 
@@ -2500,90 +2367,6 @@ function renderHomePage() {
   }
 }
 
-function renderPageHero(page) {
-  if (!page || !page.hero) {
-    return;
-  }
-  const hero = document.createElement("section");
-  hero.className = "panel home-hero";
-  const body = document.createElement("div");
-  body.className = "panel-body home-hero-body";
-  body.appendChild(renderField("Hero title", page.hero.title || "", (v) => { page.hero.title = v; }, { type: "text", editable: adminMode, className: "span-two" }));
-  body.appendChild(renderField("Hero subtitle", page.hero.subtitle || "", (v) => { page.hero.subtitle = v; }, { type: "textarea", editable: adminMode, className: "span-two", multilineDisplay: true }));
-
-  const itemsWrap = document.createElement("div");
-  itemsWrap.className = "home-hero-items span-two";
-  (page.hero.items || []).forEach((item, index) => {
-    const card = document.createElement("div");
-    card.className = "panel home-hero-item";
-    if (item.type === "text") {
-      card.appendChild(renderField(`Text block ${index + 1}`, item.text || "", (v) => { item.text = v; }, { type: "textarea", editable: adminMode, multilineDisplay: true }));
-    } else if (item.type === "image") {
-      if (item.src) {
-        const image = document.createElement("img");
-        image.className = "flow-image";
-        image.src = item.src;
-        image.alt = item.alt || "Hero image";
-        card.appendChild(image);
-      }
-      if (adminMode) {
-        card.appendChild(createImageUploadControl(item.src ? "Replace image" : "Upload image", (src) => { item.src = src; render(); }, item.src ? () => { item.src = ""; render(); } : null));
-      }
-    } else if (item.type === "video") {
-      if (item.src) {
-        const video = document.createElement("video");
-        video.className = "local-video";
-        video.src = item.src;
-        video.controls = true;
-        card.appendChild(video);
-      }
-      if (adminMode) {
-        card.appendChild(createVideoUploadControl(item.src ? "Replace video" : "Upload video", (src) => { item.src = src; render(); }, item.src ? () => { item.src = ""; render(); } : null));
-      }
-    }
-    if (adminMode) {
-      const controls = document.createElement("div");
-      controls.className = "block-actions";
-      const up = document.createElement("button");
-      up.className = "btn btn-ghost";
-      up.type = "button";
-      up.textContent = "↑";
-      up.addEventListener("click", () => moveItem(page.hero.items, index, -1));
-      const down = document.createElement("button");
-      down.className = "btn btn-ghost";
-      down.type = "button";
-      down.textContent = "↓";
-      down.addEventListener("click", () => moveItem(page.hero.items, index, 1));
-      const del = document.createElement("button");
-      del.className = "btn btn-danger";
-      del.type = "button";
-      del.textContent = "Delete";
-      del.addEventListener("click", () => { page.hero.items.splice(index, 1); if (!page.hero.items.length) page.hero.items.push(createDefaultHeroItem("text")); render(); });
-      controls.appendChild(up);
-      controls.appendChild(down);
-      controls.appendChild(del);
-      card.appendChild(controls);
-    }
-    itemsWrap.appendChild(card);
-  });
-  body.appendChild(itemsWrap);
-  if (adminMode) {
-    const actions = document.createElement("div");
-    actions.className = "home-cta-row";
-    ["text", "image", "video"].forEach((type) => {
-      const btn = document.createElement("button");
-      btn.className = "btn btn-outline";
-      btn.type = "button";
-      btn.textContent = `Add ${type}`;
-      btn.addEventListener("click", () => { page.hero.items.push(createDefaultHeroItem(type)); render(); });
-      actions.appendChild(btn);
-    });
-    body.appendChild(actions);
-  }
-  hero.appendChild(body);
-  blocksContainer.appendChild(hero);
-}
-
 function render() {
   renderBootWarnings();
   renderThemeSelector();
@@ -2600,8 +2383,6 @@ function render() {
     scrollToHashTarget();
     return;
   }
-
-  renderPageHero(getCurrentPage());
 
   getPageBlocks().forEach((block, index) => {
     if (block.type === "rules") {
@@ -3263,7 +3044,7 @@ function renderFlowRow(flow, row, rowIndex, editing) {
     } else if (element.type === "arrow") {
       const arrow = document.createElement("span");
       arrow.className = element.kind === "time" ? "flow-arrow arrow-time" : "flow-arrow";
-      arrow.textContent = element.kind === "time" ? "⏱→" : "→";
+      arrow.textContent = element.kind === "time" ? "⏱" : "→";
       rowEl.appendChild(arrow);
     } else if (element.type === "divider") {
       const divider = document.createElement("span");
@@ -3365,8 +3146,8 @@ function renderFlowRow(flow, row, rowIndex, editing) {
     if (element.type === "arrow") {
       const arrowSelect = document.createElement("select");
       [
-        { value: "breath", label: "Arrow A (short breath)" },
-        { value: "time", label: "Arrow B (time passed)" },
+        { value: "breath", label: "Short breath" },
+        { value: "time", label: "4-5secs" },
       ].forEach((choice) => {
         const option = document.createElement("option");
         option.value = choice.value;
@@ -3433,7 +3214,7 @@ function renderFlowRow(flow, row, rowIndex, editing) {
   const addDivider = document.createElement("button");
   addDivider.className = "btn btn-outline";
   addDivider.type = "button";
-  addDivider.textContent = "Add divider";
+  addDivider.textContent = "Add spacer";
   addDivider.addEventListener("click", () => {
     openFlowEditors.add(editorKey);
     pendingScrollY = window.scrollY;
@@ -3443,7 +3224,7 @@ function renderFlowRow(flow, row, rowIndex, editing) {
   const addArrowA = document.createElement("button");
   addArrowA.className = "btn btn-outline";
   addArrowA.type = "button";
-  addArrowA.textContent = "Add arrow A";
+  addArrowA.textContent = "Add short breath";
   addArrowA.addEventListener("click", () => {
     openFlowEditors.add(editorKey);
     pendingScrollY = window.scrollY;
@@ -3453,7 +3234,7 @@ function renderFlowRow(flow, row, rowIndex, editing) {
   const addArrowB = document.createElement("button");
   addArrowB.className = "btn btn-outline";
   addArrowB.type = "button";
-  addArrowB.textContent = "Add arrow B";
+  addArrowB.textContent = "Add 4-5secs";
   addArrowB.addEventListener("click", () => {
     openFlowEditors.add(editorKey);
     pendingScrollY = window.scrollY;
@@ -4310,17 +4091,12 @@ function buildViewerHtml(sourceState, styles) {
         : `<span>${iconImg}</span>`;
     })
     .join("");
-  const donateButton =
-    sourceState.header.donateEnabled && sourceState.header.donateUrl
-      ? `<a class="btn btn-outline btn-compact header-donate" href="${escapeHtml(sourceState.header.donateUrl)}" target="_blank" rel="noopener noreferrer">Support</a>`
-      : "";
   const headerHtml = `
       <div class="header-main">
         <div class="header-brand">
           ${logoHtml}
           <div class="header-text">
             <div class="header-eyebrow-row">
-              <p class="eyebrow">${escapeHtml(sourceState.header.eyebrow)}</p>
               <div class="mode-toggle" id="headerModeToggle">
                 <span class="mode-toggle-label">Basic / Advanced</span>
                 <div class="mode-toggle-buttons">
@@ -4330,8 +4106,7 @@ function buildViewerHtml(sourceState, styles) {
               </div>
             </div>
             <h1>${escapeHtml(sourceState.header.title)}</h1>
-            <p class="subhead">${escapeHtml(sourceState.header.subtitle)}</p>
-            <p class="header-intro">${escapeHtml(sourceState.header.intro)}</p>
+            <p class="subhead header-subtitle-multiline">${escapeHtml(sourceState.header.subtitle)}</p>
           </div>
         </div>
         <div class="header-controls">
@@ -4342,7 +4117,7 @@ function buildViewerHtml(sourceState, styles) {
                 ${themeOptions}
               </select>
             </div>
-            ${donateButton ? `<div class="header-donate-slot">${donateButton}</div>` : ""}
+            
           </div>
         </div>
       </div>
@@ -4497,22 +4272,23 @@ function buildExportIndexHtml(sourceState) {
     <header class="site-header">
       <div class="header-main">
         <div id="headerContent"></div>
+        <div id="headerModeToggle" class="mode-toggle"></div>
         <div class="header-controls">
           <div class="header-actions">
             <div class="theme-control">
               <label for="themeSelect">Theme</label>
               <select id="themeSelect"></select>
             </div>
-            <div id="headerModeToggle" class="mode-toggle"></div>
-            <div id="headerDonateSlot" class="header-donate-slot"></div>
             <button id="adminToggle" class="btn btn-outline" type="button">Edit</button>
             <div class="status-pill" id="adminStatus">Viewer mode</div>
           </div>
         </div>
       </div>
       <div id="headerSocials" class="header-socials"></div>
-      <nav class="page-nav" id="pageNav"></nav>
-      <nav class="category-nav" id="categoryNav"></nav>
+      <div class="header-navs">
+        <nav class="page-nav" id="pageNav"></nav>
+        <nav class="category-nav" id="categoryNav"></nav>
+      </div>
     </header>
 
     <section id="adminBox" class="admin-box panel"></section>
@@ -4555,20 +4331,21 @@ function buildOnlineIndexHtml(sourceState) {
     <header class="site-header">
       <div class="header-main">
         <div id="headerContent"></div>
+        <div id="headerModeToggle" class="mode-toggle"></div>
         <div class="header-controls">
           <div class="header-actions">
             <div class="theme-control">
               <label for="themeSelect">Theme</label>
               <select id="themeSelect"></select>
             </div>
-            <div id="headerModeToggle" class="mode-toggle"></div>
-            <div id="headerDonateSlot" class="header-donate-slot"></div>
           </div>
         </div>
       </div>
       <div id="headerSocials" class="header-socials"></div>
-      <nav class="page-nav" id="pageNav"></nav>
-      <nav class="category-nav" id="categoryNav"></nav>
+      <div class="header-navs">
+        <nav class="page-nav" id="pageNav"></nav>
+        <nav class="category-nav" id="categoryNav"></nav>
+      </div>
     </header>
 
     <section id="adminBox" class="admin-box panel"></section>
