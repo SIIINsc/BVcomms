@@ -945,10 +945,9 @@ function normalizeState(source) {
       src: typeof icon?.src === "string" ? icon.src : "",
       url: typeof icon?.url === "string" ? icon.url : "",
     }));
-    while (nextState.header.socialIcons.length < 3) {
+    if (!nextState.header.socialIcons.length) {
       nextState.header.socialIcons.push({ src: "", url: "" });
     }
-    nextState.header.socialIcons = nextState.header.socialIcons.slice(0, 3);
   }
   nextState.ui = {
     ...deepClone(DEFAULT_STATE.ui),
@@ -1253,7 +1252,7 @@ function updateAdminUI() {
   }
   if (adminToggle) {
     adminToggle.textContent = adminMode ? "Exit edit" : "Edit";
-    adminToggle.style.display = adminMode ? "none" : "inline-flex";
+    adminToggle.style.display = "inline-flex";
   }
   document.body.classList.toggle("admin-active", adminMode);
   if (!adminMode) {
@@ -1496,6 +1495,15 @@ function renderAdminBox() {
   socialsTitle.className = "admin-note";
   socialsTitle.textContent = "Header mini-icons";
   socialsRow.appendChild(socialsTitle);
+  const addIconBtn = document.createElement("button");
+  addIconBtn.className = "btn btn-outline";
+  addIconBtn.type = "button";
+  addIconBtn.textContent = "Add mini-icon";
+  addIconBtn.addEventListener("click", () => {
+    state.header.socialIcons.push({ src: "", url: "" });
+    render();
+  });
+  socialsRow.appendChild(addIconBtn);
   state.header.socialIcons.forEach((icon, index) => {
     const wrapper = document.createElement("div");
     wrapper.className = "admin-row";
@@ -1535,10 +1543,20 @@ function renderAdminBox() {
       state.header.socialIcons[index] = { src: "", url: "" };
       render();
     });
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn btn-danger";
+    removeBtn.type = "button";
+    removeBtn.textContent = "Remove icon";
+    removeBtn.disabled = state.header.socialIcons.length <= 1;
+    removeBtn.addEventListener("click", () => {
+      state.header.socialIcons.splice(index, 1);
+      render();
+    });
     wrapper.appendChild(uploadLabel);
     wrapper.appendChild(uploadInput);
     wrapper.appendChild(urlInput);
     wrapper.appendChild(clearBtn);
+    wrapper.appendChild(removeBtn);
     socialsRow.appendChild(wrapper);
   });
   headerSection.appendChild(socialsRow);
@@ -1575,17 +1593,6 @@ function renderAdminBox() {
     onlineRow.appendChild(passwordInput);
     onlineSection.appendChild(onlineRow);
 
-    const onlineActions = document.createElement("div");
-    onlineActions.className = "admin-row";
-    const onlineExportBtn = document.createElement("button");
-    onlineExportBtn.className = "btn btn-outline";
-    onlineExportBtn.type = "button";
-    onlineExportBtn.textContent = "Generate Online Build";
-    onlineExportBtn.addEventListener("click", () => {
-      handleExportOnlineZip();
-    });
-    onlineActions.appendChild(onlineExportBtn);
-    onlineSection.appendChild(onlineActions);
   }
 
   const actionSection = document.createElement("div");
@@ -1598,75 +1605,27 @@ function renderAdminBox() {
   const actionRow = document.createElement("div");
   actionRow.className = "admin-row";
 
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "btn";
-  saveBtn.type = "button";
-  saveBtn.textContent = "Save";
-  saveBtn.addEventListener("click", () => {
-    saveState();
-  });
-
-  const resetBtn = document.createElement("button");
-  resetBtn.className = "btn btn-warning";
-  resetBtn.type = "button";
-  resetBtn.textContent = "Reset to default";
-  resetBtn.addEventListener("click", () => {
-    if (confirm("Reset all blocks, elements, and layout to default?")) {
-      state = deepClone(DEFAULT_STATE);
-      saveState();
-      render();
-    }
-  });
-
-  const exportBtn = document.createElement("button");
-  exportBtn.className = "btn btn-outline";
-  exportBtn.type = "button";
-  exportBtn.textContent = "Export JSON";
-  exportBtn.addEventListener("click", () => {
-    handleExportJson();
-  });
-
-  const exportHtmlBtn = document.createElement("button");
-  exportHtmlBtn.className = "btn btn-outline";
-  exportHtmlBtn.type = "button";
-  exportHtmlBtn.textContent = "Export final (viewer-only HTML)";
-  exportHtmlBtn.addEventListener("click", () => {
-    handleExportHtml();
-  });
-
   const exportZipBtn = document.createElement("button");
   exportZipBtn.className = "btn btn-outline";
   exportZipBtn.type = "button";
-  exportZipBtn.textContent = "Export project ZIP";
+  exportZipBtn.textContent = "Export Project ZIP";
   exportZipBtn.addEventListener("click", () => {
     handleExportZip();
   });
 
-  const importLabel = document.createElement("label");
-  importLabel.className = "btn btn-outline";
-  importLabel.textContent = "Import JSON";
-  importLabel.setAttribute("for", "importData");
-
-  const importInput = document.createElement("input");
-  importInput.id = "importData";
-  importInput.type = "file";
-  importInput.accept = "application/json";
-  importInput.addEventListener("change", () => {
-    const file = importInput.files[0];
-    if (file) {
-      handleImport(file);
-    }
-    importInput.value = "";
+  const onlineExportBtn = document.createElement("button");
+  onlineExportBtn.className = "btn btn-outline";
+  onlineExportBtn.type = "button";
+  onlineExportBtn.textContent = "Generate Online Build";
+  onlineExportBtn.addEventListener("click", () => {
+    handleExportOnlineZip();
   });
 
   if (isHomePage) {
-    actionRow.appendChild(saveBtn);
-    actionRow.appendChild(resetBtn);
-    actionRow.appendChild(exportBtn);
-    actionRow.appendChild(importLabel);
-    actionRow.appendChild(importInput);
-    actionRow.appendChild(exportHtmlBtn);
     actionRow.appendChild(exportZipBtn);
+    if (!ONLINE_BUILD) {
+      actionRow.appendChild(onlineExportBtn);
+    }
   }
   actionSection.appendChild(actionRow);
 
@@ -1764,7 +1723,7 @@ function renderAdminBox() {
 
   const note = document.createElement("p");
   note.className = "admin-note";
-  note.textContent = isHomePage ? "Save writes to localStorage on this device. Export/Import lets you share edits as JSON." : "Sub-page admin tools are page-local.";
+  note.textContent = isHomePage ? "Edits auto-save to localStorage on this device. Use ZIP exports for offline or online builds." : "Sub-page admin tools are page-local.";
   actionSection.appendChild(note);
 
   if (isHomePage) {
@@ -1804,6 +1763,10 @@ function renderHeaderSocials() {
 }
 
 function renderHeaderActions() {
+  const headerActions = document.querySelector(".header-actions");
+  if (headerActions && headerSocials && headerSocials.parentElement !== headerActions) {
+    headerActions.prepend(headerSocials);
+  }
   if (headerModeToggle) {
     headerModeToggle.innerHTML = "";
     const wrap = document.createElement("div");
@@ -2283,6 +2246,10 @@ function renderHomePage() {
     if (adminMode) {
       const controls = document.createElement("div");
       controls.className = "home-tile-admin";
+      controls.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
       controls.appendChild(createImageUploadControl(subPage.staticSrc ? "Static image" : "Upload static image", (src) => {
         subPage.mediaType = (src || "").startsWith("data:image/gif") ? "gif" : "image";
         subPage.staticSrc = src;
@@ -4386,7 +4353,7 @@ The state is serialized under \`${STORAGE_KEY}\` as JSON. Key areas:
 1. Open \`index.html\` in a browser.
 2. Click **Edit** to reveal the admin box under the header.
 3. Adjust content, add/remove boxes, and upload media (stored as base64 in localStorage).
-4. Click **Save** to persist edits locally.
+4. Edits are auto-saved to localStorage as you make changes.
 
 ## Extending
 - Add new blocks by using the admin box buttons.
