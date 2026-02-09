@@ -608,6 +608,7 @@ const THEMES = {
   },
 };
 
+let stateLoadWarning = "";
 let state = loadState();
 let adminMode = loadAdmin();
 let activeTheme = loadTheme();
@@ -654,6 +655,7 @@ function loadState() {
     }
   } catch (error) {
     console.warn("Failed to parse stored data", error);
+    stateLoadWarning = "State reset due to load error";
   }
   return normalizeState(deepClone(DEFAULT_STATE));
 }
@@ -823,18 +825,19 @@ function getSubPageEntry(pageId) {
   return getHomeSubPages().find((entry) => entry.id === pageId);
 }
 
-function setSubPageDisplay(pageId, value) {
+function setSubPageDisplay(pageId, value, sourceState = state) {
   const next = (value || "").trim() || "Untitled page";
-  const sub = getSubPageEntry(pageId);
+  const subPages = Array.isArray(sourceState?.home?.subPages) ? sourceState.home.subPages : [];
+  const sub = subPages.find((entry) => entry.id === pageId);
   if (sub) {
     sub.title = next;
     sub.navLabel = next;
   }
-  if (state.pages && state.pages[pageId]) {
-    state.pages[pageId].title = next;
-    state.pages[pageId].hero = state.pages[pageId].hero || { title: next, subtitle: "", items: [createDefaultHeroItem("text")] };
-    if (!state.pages[pageId].hero.title) {
-      state.pages[pageId].hero.title = next;
+  if (sourceState?.pages && sourceState.pages[pageId]) {
+    sourceState.pages[pageId].title = next;
+    sourceState.pages[pageId].hero = sourceState.pages[pageId].hero || { title: next, subtitle: "", items: [createDefaultHeroItem("text")] };
+    if (!sourceState.pages[pageId].hero.title) {
+      sourceState.pages[pageId].hero.title = next;
     }
   }
 }
@@ -1004,7 +1007,7 @@ function normalizeState(source) {
     if (!nextState.pages[subPage.id]) {
       nextState.pages[subPage.id] = createMetaPage(subPage.id, subPage.title || subPage.navLabel || "New Sub Page");
     }
-    setSubPageDisplay(subPage.id, subPage.title || subPage.navLabel || "New Sub Page");
+    setSubPageDisplay(subPage.id, subPage.title || subPage.navLabel || "New Sub Page", nextState);
   });
 
   return nextState;
@@ -2582,6 +2585,7 @@ function renderPageHero(page) {
 }
 
 function render() {
+  renderBootWarnings();
   renderThemeSelector();
   renderHeader();
   renderHeaderActions();
@@ -5116,6 +5120,32 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+
+function renderBootWarnings() {
+  const existing = document.getElementById("bootWarning");
+  if (!stateLoadWarning) {
+    if (existing) {
+      existing.remove();
+    }
+    return;
+  }
+  const warning = existing || document.createElement("div");
+  warning.id = "bootWarning";
+  warning.className = "boot-warning";
+  warning.textContent = stateLoadWarning;
+  if (!existing) {
+    document.body.prepend(warning);
+  }
+}
+
+function showBootError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const banner = document.createElement("div");
+  banner.className = "boot-error";
+  banner.innerHTML = `<strong>Boot error:</strong> ${escapeHtml(message)}`;
+  document.body.prepend(banner);
+}
+
 function handleImport(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -5147,7 +5177,12 @@ window.addEventListener("resize", () => {
   updateScrollOffset();
 });
 
-setTheme(activeTheme);
-setViewMode(activeMode);
-syncPageFromHash();
-updateAdminUI();
+try {
+  setTheme(activeTheme);
+  setViewMode(activeMode);
+  syncPageFromHash();
+  updateAdminUI();
+} catch (error) {
+  console.error("Boot error", error);
+  showBootError(error);
+}
