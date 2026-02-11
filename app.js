@@ -30,6 +30,7 @@ const DEFAULT_SUB_ELEMENTS = [
   "Context",
   "Meaning",
 ];
+const DEFAULT_THEME_NAME = "default";
 
 const CORE_PAGE_DEFINITIONS = {
   home: { id: "home", title: "Home", navLabel: "Home" },
@@ -54,7 +55,7 @@ const DEFAULT_STATE = {
     ],
   },
   ui: {
-    theme: "stanton",
+    theme: DEFAULT_THEME_NAME,
     viewMode: "basic",
   },
   roleLabels: [
@@ -506,6 +507,22 @@ const DEFAULT_STATE = {
 };
 
 const THEMES = {
+  default: {
+    label: "Default",
+    colors: {
+      "--bg": "#090c12",
+      "--panel": "#121720",
+      "--panel-elev": "#1a2230",
+      "--line": "#2c394e",
+      "--text": "#e4ebf3",
+      "--muted": "#9dabbc",
+      "--accent": "#7fa6c9",
+      "--accent-strong": "#b9c8d8",
+      "--danger": "#b8707f",
+      "--success": "#7fb6a0",
+      "--warning": "#bda980",
+    },
+  },
   stanton: {
     label: "Stanton",
     colors: {
@@ -706,6 +723,31 @@ function createBlankInfoBlock() {
         backgroundSrc: "",
       },
     ],
+  };
+}
+
+
+function createBlankShipMetaBlock() {
+  return {
+    id: createId("ship-meta"),
+    type: "shipMeta",
+    title: "Ship Meta Box",
+    shipName: "",
+    roleTagline: "",
+    components: [
+      { id: createId("ship-component"), slot: "Shield", component: "", notes: "" },
+      { id: createId("ship-component"), slot: "Powerplant", component: "", notes: "" },
+      { id: createId("ship-component"), slot: "Cooler", component: "", notes: "" },
+      { id: createId("ship-component"), slot: "Weapons", component: "", notes: "" },
+      { id: createId("ship-component"), slot: "Missiles", component: "", notes: "" },
+    ],
+    signatures: { em: "", ir: "", crossSection: { front: "", side: "", top: "" } },
+    metrics: [
+      { id: createId("ship-metric"), label: "Cooling", value: 0 },
+      { id: createId("ship-metric"), label: "Thrust", value: 0 },
+      { id: createId("ship-metric"), label: "Durability", value: 0 },
+    ],
+    summary: "",
   };
 }
 
@@ -974,7 +1016,7 @@ function normalizeState(source) {
     ...deepClone(DEFAULT_STATE.ui),
     ...(nextState.ui || {}),
   };
-  nextState.ui.theme = resolveThemeName(nextState.ui.theme || "stanton");
+  nextState.ui.theme = resolveThemeName(nextState.ui.theme || DEFAULT_THEME_NAME);
   nextState.ui.viewMode = normalizeViewMode(nextState.ui.viewMode || "basic");
   nextState.roleLabels = normalizeRoleLabels(nextState.roleLabels);
   const defaultAccounts = deepClone(DEFAULT_STATE.onlineAuth);
@@ -1099,6 +1141,34 @@ function normalizeBlocks(blocks) {
     if (block.type === "calloutGroup") {
       block.contextText = typeof block.contextText === "string" ? block.contextText : "";
     }
+    if (block.type === "shipMeta") {
+      block.title = typeof block.title === "string" && block.title ? block.title : "Ship Meta Box";
+      block.shipName = typeof block.shipName === "string" ? block.shipName : "";
+      block.roleTagline = typeof block.roleTagline === "string" ? block.roleTagline : "";
+      const defaultComponents = createBlankShipMetaBlock().components;
+      block.components = (Array.isArray(block.components) && block.components.length ? block.components : defaultComponents).map((entry, index) => ({
+        id: entry?.id || createId("ship-component"),
+        slot: typeof entry?.slot === "string" && entry.slot ? entry.slot : (defaultComponents[index]?.slot || "Component"),
+        component: typeof entry?.component === "string" ? entry.component : "",
+        notes: typeof entry?.notes === "string" ? entry.notes : "",
+      }));
+      const cross = block.signatures?.crossSection || {};
+      block.signatures = {
+        em: Number.isFinite(Number(block.signatures?.em)) ? Number(block.signatures.em) : (typeof block.signatures?.em === "string" ? block.signatures.em : ""),
+        ir: Number.isFinite(Number(block.signatures?.ir)) ? Number(block.signatures.ir) : (typeof block.signatures?.ir === "string" ? block.signatures.ir : ""),
+        crossSection: {
+          front: Number.isFinite(Number(cross.front)) ? Number(cross.front) : (typeof cross.front === "string" ? cross.front : ""),
+          side: Number.isFinite(Number(cross.side)) ? Number(cross.side) : (typeof cross.side === "string" ? cross.side : ""),
+          top: Number.isFinite(Number(cross.top)) ? Number(cross.top) : (typeof cross.top === "string" ? cross.top : ""),
+        },
+      };
+      block.metrics = (Array.isArray(block.metrics) && block.metrics.length ? block.metrics : createBlankShipMetaBlock().metrics).map((metric) => ({
+        id: metric?.id || createId("ship-metric"),
+        label: typeof metric?.label === "string" && metric.label ? metric.label : "Metric",
+        value: Math.max(0, Math.min(100, Number(metric?.value) || 0)),
+      }));
+      block.summary = typeof block.summary === "string" ? block.summary : "";
+    }
     return block;
   }).filter(Boolean);
 }
@@ -1181,20 +1251,19 @@ function loadViewMode() {
 }
 
 function loadTheme() {
-  const stored = localStorage.getItem(THEME_KEY) || state?.ui?.theme || "stanton";
+  const stored = localStorage.getItem(THEME_KEY) || state?.ui?.theme || DEFAULT_THEME_NAME;
   return resolveThemeName(stored);
 }
 
 function resolveThemeName(themeName) {
   const legacyMap = {
-    default: "stanton",
     blue: "stanton",
     green: "grimhex",
     amber: "pyro",
     violet: "stanton",
   };
   const normalized = legacyMap[themeName] || themeName;
-  return THEMES[normalized] ? normalized : "stanton";
+  return THEMES[normalized] ? normalized : DEFAULT_THEME_NAME;
 }
 
 function normalizeVisibility(value) {
@@ -1210,14 +1279,14 @@ function saveState() {
 }
 
 function applyTheme(themeName) {
-  const theme = THEMES[themeName] || THEMES.stanton;
+  const theme = THEMES[themeName] || THEMES[DEFAULT_THEME_NAME];
   Object.entries(theme.colors).forEach(([key, value]) => {
     document.documentElement.style.setProperty(key, value);
   });
 }
 
 function setTheme(themeName) {
-  activeTheme = THEMES[themeName] ? themeName : "stanton";
+  activeTheme = THEMES[themeName] ? themeName : DEFAULT_THEME_NAME;
   localStorage.setItem(THEME_KEY, activeTheme);
   if (state.ui) {
     state.ui.theme = activeTheme;
@@ -1786,10 +1855,20 @@ function renderAdminBox() {
     render();
   });
 
+  const addShipMeta = document.createElement("button");
+  addShipMeta.className = "btn btn-outline";
+  addShipMeta.type = "button";
+  addShipMeta.textContent = "Add Ship Meta Box";
+  addShipMeta.addEventListener("click", () => {
+    getPageBlocks().push(createBlankShipMetaBlock());
+    render();
+  });
+
   blockRow.appendChild(addInfo);
   blockRow.appendChild(addExample);
   blockRow.appendChild(addStudy);
   blockRow.appendChild(addVideo);
+  blockRow.appendChild(addShipMeta);
   actionSection.appendChild(blockRow);
 
   const note = document.createElement("p");
@@ -1834,10 +1913,6 @@ function renderHeaderSocials() {
 }
 
 function renderHeaderActions() {
-  const headerActions = document.querySelector(".header-actions");
-  if (headerActions && headerSocials && headerSocials.parentElement !== headerActions) {
-    headerActions.prepend(headerSocials);
-  }
   if (headerModeToggle) {
     headerModeToggle.innerHTML = "";
     const stack = document.createElement("div");
@@ -2224,10 +2299,11 @@ function renderNav() {
   requestAnimationFrame(() => {
     categoryNav.classList.add("nav-deploy");
   });
-  getPageBlocks().forEach((block) => {
+  getPageBlocks().forEach((block, index) => {
     const link = document.createElement("a");
     link.href = `#${currentPageId}/${block.id}`;
     link.textContent = block.title || "Untitled block";
+    link.style.setProperty("--deploy-order", String(index));
     categoryNav.appendChild(link);
   });
 }
@@ -2353,71 +2429,10 @@ function renderHomePage() {
       tile.classList.add("has-media");
     }
 
-    const title = renderEditableText("span", tileLabel, (value) => {
-      setSubPageDisplay(subPage.id, value);
-      renderPageNav();
-    }, { className: "home-tile-title", editable: false });
+    const title = document.createElement("span");
+    title.className = "home-tile-title";
+    title.textContent = tileLabel;
     tile.appendChild(title);
-
-    if (adminMode) {
-      const controls = document.createElement("div");
-      controls.className = "home-tile-admin";
-      controls.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-
-      const renameWrap = document.createElement("div");
-      renameWrap.className = "image-upload";
-      const renameLabel = document.createElement("label");
-      renameLabel.className = "eyebrow";
-      renameLabel.textContent = "Rename Sub Page";
-      const renameInput = document.createElement("input");
-      renameInput.type = "text";
-      renameInput.className = "panel-title-input";
-      renameInput.value = tileLabel;
-      renameInput.addEventListener("input", () => {
-        setSubPageDisplay(subPage.id, renameInput.value);
-        renderPageNav();
-        renderHeaderActions();
-      });
-      renameWrap.appendChild(renameLabel);
-      renameWrap.appendChild(renameInput);
-      controls.appendChild(renameWrap);
-
-      controls.appendChild(createImageUploadControl(subPage.backgroundSrc ? "Hover image" : "Upload hover image", (src) => {
-        subPage.mediaType = (src || "").startsWith("data:image/gif") ? "gif" : "image";
-        subPage.backgroundSrc = src;
-        render();
-      }, subPage.mediaType !== "video" && subPage.backgroundSrc ? () => { subPage.backgroundSrc = ""; render(); } : null));
-      controls.appendChild(createImageUploadControl(subPage.staticSrc ? "Static image" : "Upload static image", (src) => {
-        subPage.mediaType = (src || "").startsWith("data:image/gif") ? "gif" : "image";
-        subPage.staticSrc = src;
-        render();
-      }, subPage.staticSrc ? () => { subPage.staticSrc = ""; render(); } : null));
-      controls.appendChild(createVideoUploadControl(subPage.backgroundSrc ? "Hover video" : "Upload hover video", (src) => {
-        subPage.mediaType = "video";
-        subPage.backgroundSrc = src;
-        render();
-      }, subPage.mediaType === "video" && subPage.backgroundSrc ? () => { subPage.backgroundSrc = ""; render(); } : null));
-
-      const row = document.createElement("div");
-      row.className = "tile-inline-actions";
-      const left = document.createElement("button");
-      left.className = "btn btn-ghost btn-compact";
-      left.type = "button";
-      left.textContent = "←";
-      left.addEventListener("click", (event) => { event.preventDefault(); moveItem(home.subPages, subIndex, -1); });
-      const right = document.createElement("button");
-      right.className = "btn btn-ghost btn-compact";
-      right.type = "button";
-      right.textContent = "→";
-      right.addEventListener("click", (event) => { event.preventDefault(); moveItem(home.subPages, subIndex, 1); });
-      row.appendChild(left);
-      row.appendChild(right);
-      controls.appendChild(row);
-      tile.appendChild(controls);
-    }
 
     let hoverVideo = null;
     if (subPage.mediaType === "video" && subPage.backgroundSrc) {
@@ -2430,6 +2445,79 @@ function renderHomePage() {
       hoverVideo.preload = "metadata";
       hoverVideo.pause();
       tile.appendChild(hoverVideo);
+    }
+
+    if (adminMode) {
+      tile.addEventListener("click", (event) => {
+        event.preventDefault();
+      });
+      const controls = document.createElement("div");
+      controls.className = "home-tile-admin";
+      controls.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+
+      const topRow = document.createElement("div");
+      topRow.className = "tile-inline-actions";
+      const openBtn = document.createElement("a");
+      openBtn.className = "btn btn-outline btn-compact home-tile-open-btn";
+      openBtn.href = `#${id}`;
+      openBtn.textContent = "Open";
+      topRow.appendChild(openBtn);
+
+      const left = document.createElement("button");
+      left.className = "btn btn-ghost btn-compact";
+      left.type = "button";
+      left.textContent = "←";
+      left.addEventListener("click", (event) => { event.preventDefault(); moveItem(home.subPages, subIndex, -1); });
+      const right = document.createElement("button");
+      right.className = "btn btn-ghost btn-compact";
+      right.type = "button";
+      right.textContent = "→";
+      right.addEventListener("click", (event) => { event.preventDefault(); moveItem(home.subPages, subIndex, 1); });
+      topRow.appendChild(left);
+      topRow.appendChild(right);
+      controls.appendChild(topRow);
+
+      const renameWrap = document.createElement("div");
+      renameWrap.className = "image-upload";
+      const renameLabel = document.createElement("label");
+      renameLabel.className = "eyebrow";
+      renameLabel.textContent = "Rename Sub Page";
+      const renameInput = document.createElement("input");
+      renameInput.type = "text";
+      renameInput.className = "panel-title-input";
+      renameInput.value = tileLabel;
+      renameInput.addEventListener("input", () => {
+        setSubPageDisplay(subPage.id, renameInput.value);
+        title.textContent = renameInput.value || "Untitled page";
+        renderPageNav();
+        renderHeaderActions();
+      });
+      renameWrap.appendChild(renameLabel);
+      renameWrap.appendChild(renameInput);
+      controls.appendChild(renameWrap);
+
+      controls.appendChild(createImageUploadControl(subPage.staticSrc ? "Static image" : "Upload static image", (src) => {
+        subPage.mediaType = (src || "").startsWith("data:image/gif") ? "gif" : "image";
+        subPage.staticSrc = src;
+        render();
+      }, subPage.staticSrc ? () => { subPage.staticSrc = ""; render(); } : null));
+
+      controls.appendChild(createImageUploadControl(subPage.backgroundSrc && subPage.mediaType !== "video" ? "Hover image/gif" : "Upload hover image/gif", (src) => {
+        subPage.mediaType = (src || "").startsWith("data:image/gif") ? "gif" : "image";
+        subPage.backgroundSrc = src;
+        render();
+      }, subPage.mediaType !== "video" && subPage.backgroundSrc ? () => { subPage.backgroundSrc = ""; render(); } : null));
+
+      controls.appendChild(createVideoUploadControl(subPage.backgroundSrc && subPage.mediaType === "video" ? "Hover video" : "Upload hover video", (src) => {
+        subPage.mediaType = "video";
+        subPage.backgroundSrc = src;
+        render();
+      }, subPage.mediaType === "video" && subPage.backgroundSrc ? () => { subPage.backgroundSrc = ""; render(); } : null));
+
+      tile.appendChild(controls);
     }
 
     tile.addEventListener("mouseenter", () => {
@@ -2483,6 +2571,11 @@ function renderHomePage() {
     }
     if (block.type === "video") {
       blocksContainer.appendChild(renderVideoBlock(block, index));
+      return;
+    }
+    if (block.type === "shipMeta") {
+      blocksContainer.appendChild(renderShipMetaBlock(block, index));
+      return;
     }
   });
 }
@@ -2520,6 +2613,10 @@ function render() {
     }
     if (block.type === "video") {
       blocksContainer.appendChild(renderVideoBlock(block, index));
+      return;
+    }
+    if (block.type === "shipMeta") {
+      blocksContainer.appendChild(renderShipMetaBlock(block, index));
       return;
     }
   });
@@ -3021,6 +3118,157 @@ function renderFlowsBlock(block, index) {
     });
     body.appendChild(addFlow);
   }
+
+  section.appendChild(body);
+  return section;
+}
+
+function renderShipMetaBlock(block, index) {
+  const section = document.createElement("section");
+  section.className = "panel";
+  section.id = block.id;
+  section.dataset.title = block.title || "Ship Meta Box";
+  const editing = isBlockEditing(block.id);
+
+  const header = document.createElement("div");
+  header.className = "panel-header";
+  header.appendChild(renderBlockTitle(block, "h2", editing));
+  header.appendChild(renderBlockActions(block, index, editing));
+  section.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "panel-body ship-meta-box";
+
+  const head = document.createElement("div");
+  head.className = "ship-meta-header";
+  head.appendChild(renderField("Ship name", block.shipName, (value) => { block.shipName = value; }, { editable: editing, type: "text", className: "span-two" }));
+  head.appendChild(renderField("Role / tagline", block.roleTagline, (value) => { block.roleTagline = value; }, { editable: editing, type: "text", className: "span-two" }));
+  body.appendChild(head);
+
+  const grid = document.createElement("div");
+  grid.className = "ship-meta-grid";
+
+  const left = document.createElement("div");
+  left.className = "ship-meta-components";
+  const leftTitle = document.createElement("div");
+  leftTitle.className = "eyebrow";
+  leftTitle.textContent = "Components";
+  left.appendChild(leftTitle);
+
+  (block.components || []).forEach((row, rowIndex) => {
+    const rowEl = document.createElement("div");
+    rowEl.className = "ship-meta-component-row";
+    rowEl.appendChild(renderField("Slot", row.slot, (value) => { row.slot = value; }, { editable: editing, type: "text" }));
+    rowEl.appendChild(renderField("Component", row.component, (value) => { row.component = value; }, { editable: editing, type: "text" }));
+    rowEl.appendChild(renderField("Notes", row.notes, (value) => { row.notes = value; }, { editable: editing, type: "text" }));
+    if (editing) {
+      const remove = document.createElement("button");
+      remove.className = "btn btn-danger btn-compact";
+      remove.type = "button";
+      remove.textContent = "✕";
+      remove.addEventListener("click", () => {
+        block.components.splice(rowIndex, 1);
+        render();
+      });
+      rowEl.appendChild(remove);
+    }
+    left.appendChild(rowEl);
+  });
+
+  if (editing) {
+    const addRow = document.createElement("button");
+    addRow.className = "btn btn-outline btn-compact";
+    addRow.type = "button";
+    addRow.textContent = "Add component row";
+    addRow.addEventListener("click", () => {
+      block.components.push({ id: createId("ship-component"), slot: "Component", component: "", notes: "" });
+      render();
+    });
+    left.appendChild(addRow);
+  }
+
+  const right = document.createElement("div");
+  right.className = "ship-meta-signatures";
+  const sigTitle = document.createElement("div");
+  sigTitle.className = "eyebrow";
+  sigTitle.textContent = "Signatures + performance";
+  right.appendChild(sigTitle);
+
+  const sigGrid = document.createElement("div");
+  sigGrid.className = "ship-meta-signature-grid";
+  sigGrid.appendChild(renderField("⚡ EM", block.signatures?.em, (value) => { block.signatures.em = value; }, { editable: editing, type: "number" }));
+  sigGrid.appendChild(renderField("🌡 IR", block.signatures?.ir, (value) => { block.signatures.ir = value; }, { editable: editing, type: "number" }));
+  right.appendChild(sigGrid);
+
+  const cross = document.createElement("div");
+  cross.className = "ship-meta-cross-grid";
+  cross.appendChild(renderField("◉ front", block.signatures?.crossSection?.front, (value) => { block.signatures.crossSection.front = value; }, { editable: editing, type: "number" }));
+  cross.appendChild(renderField("◍ side", block.signatures?.crossSection?.side, (value) => { block.signatures.crossSection.side = value; }, { editable: editing, type: "number" }));
+  cross.appendChild(renderField("◎ top", block.signatures?.crossSection?.top, (value) => { block.signatures.crossSection.top = value; }, { editable: editing, type: "number" }));
+  right.appendChild(cross);
+
+  const bars = document.createElement("div");
+  bars.className = "ship-meta-bars";
+  (block.metrics || []).forEach((metric, idx) => {
+    const row = document.createElement("div");
+    row.className = "ship-meta-bar";
+    if (editing) {
+      const label = document.createElement("input");
+      label.type = "text";
+      label.value = metric.label || "Metric";
+      label.className = "panel-title-input";
+      label.addEventListener("input", () => { metric.label = label.value; });
+      row.appendChild(label);
+    } else {
+      const label = document.createElement("div");
+      label.className = "ship-meta-metric-label";
+      label.textContent = metric.label || "Metric";
+      row.appendChild(label);
+    }
+    const track = document.createElement("div");
+    track.className = "ship-meta-track";
+    const fill = document.createElement("div");
+    fill.className = "ship-meta-fill";
+    fill.style.setProperty("--fill", String(Math.max(0, Math.min(100, Number(metric.value) || 0))));
+    track.appendChild(fill);
+    row.appendChild(track);
+    if (editing) {
+      const value = document.createElement("input");
+      value.type = "number";
+      value.min = "0";
+      value.max = "100";
+      value.value = String(metric.value || 0);
+      value.className = "panel-title-input";
+      value.addEventListener("input", () => { metric.value = Math.max(0, Math.min(100, Number(value.value) || 0)); });
+      row.appendChild(value);
+    } else {
+      const value = document.createElement("div");
+      value.className = "readonly";
+      value.textContent = `${Math.round(Number(metric.value) || 0)}%`;
+      row.appendChild(value);
+    }
+    bars.appendChild(row);
+    setTimeout(() => fill.classList.add("is-visible"), 30 + idx * 70);
+  });
+
+  if (editing) {
+    const addMetric = document.createElement("button");
+    addMetric.className = "btn btn-outline btn-compact";
+    addMetric.type = "button";
+    addMetric.textContent = "Add bar";
+    addMetric.addEventListener("click", () => {
+      block.metrics.push({ id: createId("ship-metric"), label: "Metric", value: 0 });
+      render();
+    });
+    bars.appendChild(addMetric);
+  }
+  right.appendChild(bars);
+
+  grid.appendChild(left);
+  grid.appendChild(right);
+  body.appendChild(grid);
+
+  body.appendChild(renderField("Meta summary", block.summary, (value) => { block.summary = value; }, { editable: editing, type: "textarea", className: "span-two" }));
 
   section.appendChild(body);
   return section;
@@ -4164,7 +4412,7 @@ async function handleExportZip() {
     { name: "app.js", content: script },
     { name: "README.md", content: readme },
   ];
-  const zipBlob = createZipBlob(files);
+  const zipBlob = createZipBlob(prepareStaticZipFiles(files));
   const url = URL.createObjectURL(zipBlob);
   const link = document.createElement("a");
   link.href = url;
@@ -4186,7 +4434,7 @@ async function handleExportOnlineZip() {
     { name: "app.js", content: script },
     { name: "README.md", content: readme },
   ];
-  const zipBlob = createZipBlob(files);
+  const zipBlob = createZipBlob(prepareStaticZipFiles(files));
   const url = URL.createObjectURL(zipBlob);
   const link = document.createElement("a");
   link.href = url;
@@ -4208,7 +4456,7 @@ async function handleExportOnlineViewerZip() {
     { name: "app.js", content: script },
     { name: "README.md", content: readme },
   ];
-  const zipBlob = createZipBlob(files);
+  const zipBlob = createZipBlob(prepareStaticZipFiles(files));
   const url = URL.createObjectURL(zipBlob);
   const link = document.createElement("a");
   link.href = url;
@@ -4227,7 +4475,7 @@ function buildViewerHtml(sourceState, styles) {
   const headerStyle = sourceState.header.backgroundSrc
     ? ` style="--header-bg: url('${escapeHtml(sourceState.header.backgroundSrc)}');"`
     : "";
-  const themeOptions = buildThemeOptions(sourceState.ui?.theme || "stanton");
+  const themeOptions = buildThemeOptions(sourceState.ui?.theme || DEFAULT_THEME_NAME);
   const socialIcons = (sourceState.header.socialIcons || [])
     .filter((icon) => icon?.src)
     .map((icon) => {
@@ -4264,12 +4512,16 @@ function buildViewerHtml(sourceState, styles) {
                 ${themeOptions}
               </select>
             </div>
-            
           </div>
         </div>
       </div>
-      <div class="header-socials">${socialIcons}</div>
-      <nav class="category-nav" id="categoryNav"></nav>
+      <div class="header-navs">
+        <nav class="page-nav" id="pageNav"></nav>
+        <div class="category-nav-band">
+          <nav class="category-nav" id="categoryNav"></nav>
+          <div class="header-socials">${socialIcons}</div>
+        </div>
+      </div>
   `;
 
   const blocksHtml = sourceState.blocks
@@ -4308,14 +4560,14 @@ function buildViewerHtml(sourceState, styles) {
       const modeButtons = Array.from(document.querySelectorAll('.mode-btn'));
 
       function applyTheme(themeName) {
-        const theme = THEMES[themeName] || THEMES.stanton;
+        const theme = THEMES[themeName] || THEMES[DEFAULT_THEME_NAME];
         Object.entries(theme).forEach(([key, value]) => {
           document.documentElement.style.setProperty(key, value);
         });
       }
 
       function setTheme(themeName) {
-        const next = THEMES[themeName] ? themeName : 'stanton';
+        const next = THEMES[themeName] ? themeName : 'default';
         localStorage.setItem(THEME_KEY, next);
         applyTheme(next);
         if (themeSelect) {
@@ -4323,7 +4575,7 @@ function buildViewerHtml(sourceState, styles) {
         }
       }
 
-      const savedTheme = localStorage.getItem(THEME_KEY) || '${escapeHtml(sourceState.ui?.theme || "stanton")}';
+      const savedTheme = localStorage.getItem(THEME_KEY) || '${escapeHtml(sourceState.ui?.theme || DEFAULT_THEME_NAME)}';
       applyTheme(savedTheme);
       if (themeSelect) {
         themeSelect.value = savedTheme;
@@ -4422,19 +4674,21 @@ function buildExportIndexHtml(sourceState) {
         <div id="headerModeToggle" class="mode-toggle"></div>
         <div class="header-controls">
           <div class="header-actions">
-            <button id="adminToggle" class="btn btn-outline" type="button">Edit</button>
             <div class="theme-control">
               <label for="themeSelect">Theme</label>
               <select id="themeSelect"></select>
             </div>
+            <button id="adminToggle" class="btn btn-outline" type="button">Edit</button>
             <div class="status-pill" id="adminStatus">Viewer mode</div>
           </div>
         </div>
       </div>
-      <div id="headerSocials" class="header-socials"></div>
       <div class="header-navs">
         <nav class="page-nav" id="pageNav"></nav>
-        <nav class="category-nav" id="categoryNav"></nav>
+        <div class="category-nav-band">
+          <nav class="category-nav" id="categoryNav"></nav>
+          <div id="headerSocials" class="header-socials"></div>
+        </div>
       </div>
     </header>
 
@@ -4487,10 +4741,12 @@ function buildOnlineIndexHtml(sourceState) {
           </div>
         </div>
       </div>
-      <div id="headerSocials" class="header-socials"></div>
       <div class="header-navs">
         <nav class="page-nav" id="pageNav"></nav>
-        <nav class="category-nav" id="categoryNav"></nav>
+        <div class="category-nav-band">
+          <nav class="category-nav" id="categoryNav"></nav>
+          <div id="headerSocials" class="header-socials"></div>
+        </div>
       </div>
     </header>
 
@@ -4542,10 +4798,12 @@ function buildOnlineViewerIndexHtml(sourceState) {
           </div>
         </div>
       </div>
-      <div id="headerSocials" class="header-socials"></div>
       <div class="header-navs">
         <nav class="page-nav" id="pageNav"></nav>
-        <nav class="category-nav" id="categoryNav"></nav>
+        <div class="category-nav-band">
+          <nav class="category-nav" id="categoryNav"></nav>
+          <div id="headerSocials" class="header-socials"></div>
+        </div>
       </div>
     </header>
 
@@ -4594,7 +4852,8 @@ The state is serialized under \`${STORAGE_KEY}\` as JSON. Key areas:
 
 ## Notes
 - Uploads are base64-encoded for offline use.
-- The exported state is embedded in \`index.html\` via \`window.__EXPORTED_STATE__\` to make this ZIP immediately runnable.`;
+- The exported state is embedded in \`index.html\` via \`window.__EXPORTED_STATE__\` to make this ZIP immediately runnable.
+- Windows SmartScreen may flag ZIPs downloaded from browsers. If blocked, right-click ZIP > Properties > Unblock, or use a different browser download method.`;
 }
 
 function buildOnlineReadme(sourceState) {
@@ -4614,7 +4873,10 @@ function buildOnlineReadme(sourceState) {
 - Any configured pair in HOME Admin → Online build accounts is valid.
 
 ## Security note
-This is a static site, so the login gate is **client-side only** and not real security. For production, use server-side protection such as basic auth/htpasswd or platform password protection.`;
+This is a static site, so the login gate is **client-side only** and not real security. For production, use server-side protection such as basic auth/htpasswd or platform password protection.
+
+## Windows note
+Windows SmartScreen may flag ZIPs downloaded from browsers. If blocked, right-click ZIP > Properties > Unblock, or use a different browser download method.`;
 }
 
 function buildOnlineViewerReadme() {
@@ -4626,7 +4888,23 @@ function buildOnlineViewerReadme() {
 
 ## Notes
 - Theme switcher and content navigation remain available.
-- The state snapshot reflects the current saved editor content at export time.`;
+- The state snapshot reflects the current saved editor content at export time.
+- Windows SmartScreen may flag ZIPs downloaded from browsers. If blocked, right-click ZIP > Properties > Unblock, or use a different browser download method.`;
+}
+
+function prepareStaticZipFiles(files) {
+  const disallowedExt = /\.(exe|bat|cmd|ps1|vbs|msi)$/i;
+  const allowedPath = /^(index\.html|README\.md|[a-z0-9\-_/]+\.(css|js|html|md|png|jpg|jpeg|gif|webp|svg|avif))$/i;
+  return (files || []).filter((file) => {
+    const name = String(file?.name || "").replace(/\\/g, "/");
+    if (!name || name.startsWith(".") || name.includes("..")) {
+      return false;
+    }
+    if (disallowedExt.test(name)) {
+      return false;
+    }
+    return allowedPath.test(name);
+  });
 }
 
 function createZipBlob(files) {
@@ -4946,6 +5224,47 @@ function buildViewerBlock(block, sourceState) {
         </div>
         ${cards || '<div class="empty-state">No elements in this sub-box yet.</div>'}
         ${buildBlockVideosHtml(block, { panelPadding: false })}
+      </section>
+    `;
+  }
+
+
+  if (block.type === "shipMeta") {
+    const components = (block.components || [])
+      .map((entry) => `<div class="ship-meta-component-row">${viewerField("Slot", entry.slot)}${viewerField("Component", entry.component)}${viewerField("Notes", entry.notes)}</div>`)
+      .join("");
+    const bars = (block.metrics || [])
+      .map((metric) => `<div class="ship-meta-bar"><div class="ship-meta-metric-label">${escapeHtml(metric.label || "Metric")}</div><div class="ship-meta-track"><div class="ship-meta-fill is-visible" style="--fill:${Math.max(0, Math.min(100, Number(metric.value) || 0))}"></div></div><div class="readonly">${Math.round(Number(metric.value) || 0)}%</div></div>`)
+      .join("");
+    return `
+      <section class="panel" id="${block.id}" data-title="${escapeHtml(block.title || "Ship Meta Box")}">
+        <div class="panel-header"><h2>${escapeHtml(block.title || "Ship Meta Box")}</h2></div>
+        <div class="panel-body ship-meta-box">
+          <div class="ship-meta-header">
+            ${viewerField("Ship name", block.shipName, "span-two")}
+            ${viewerField("Role / tagline", block.roleTagline, "span-two")}
+          </div>
+          <div class="ship-meta-grid">
+            <div class="ship-meta-components">
+              <div class="eyebrow">Components</div>
+              ${components || '<div class="empty-state">No components listed.</div>'}
+            </div>
+            <div class="ship-meta-signatures">
+              <div class="eyebrow">Signatures + performance</div>
+              <div class="ship-meta-signature-grid">
+                ${viewerField("⚡ EM", block.signatures?.em)}
+                ${viewerField("🌡 IR", block.signatures?.ir)}
+              </div>
+              <div class="ship-meta-cross-grid">
+                ${viewerField("◉ front", block.signatures?.crossSection?.front)}
+                ${viewerField("◍ side", block.signatures?.crossSection?.side)}
+                ${viewerField("◎ top", block.signatures?.crossSection?.top)}
+              </div>
+              <div class="ship-meta-bars">${bars}</div>
+            </div>
+          </div>
+          ${viewerFieldMultiline("Meta summary", block.summary, "span-two")}
+        </div>
       </section>
     `;
   }

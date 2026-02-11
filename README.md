@@ -41,3 +41,5 @@ The header stack is center-aligned for clarity:
 
 ## Notes
 - Fully offline-friendly: base64 uploads + localStorage state.
+
+- Windows SmartScreen may flag ZIPs downloaded from browsers. If blocked, right-click ZIP > Properties > Unblock, or use a different browser download method.
