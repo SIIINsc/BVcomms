@@ -1165,7 +1165,7 @@ function normalizeBlocks(blocks) {
     if (block.type === "calloutGroup") {
       block.contextText = typeof block.contextText === "string" ? block.contextText : "";
       block.subBoxes = Array.isArray(block.subBoxes) && block.subBoxes.length
-        ? block.subBoxes.slice(0, 2).map((sub, idx) => ({
+        ? block.subBoxes.slice(0, 3).map((sub, idx) => ({
             id: sub?.id || createId("study-sub"),
             title: typeof sub?.title === "string" && sub.title ? sub.title : `Study Sub-Box ${idx + 1}`,
             description: typeof sub?.description === "string" ? sub.description : "",
@@ -1204,6 +1204,7 @@ function normalizeBlocks(blocks) {
               key,
               component: typeof legacy.component === "string" ? legacy.component : "",
               whereToBuy: typeof legacy.whereToBuy === "string" ? legacy.whereToBuy : "",
+              notAvailableInPu: Boolean(legacy.notAvailableInPu),
             };
           }),
           signatures: {
@@ -1476,6 +1477,26 @@ function updateScrollOffset() {
   const offset = header ? header.offsetHeight + 12 : 180;
   document.documentElement.style.setProperty("--scroll-offset", `${offset}px`);
 }
+
+function closeStudyOverlaysOnOutsideClick(event) {
+  const expanded = document.querySelectorAll(".study-overlay-callout.expanded");
+  if (!expanded.length) {
+    return;
+  }
+  const clickedInside = event.target.closest && event.target.closest(".study-overlay-callout");
+  if (clickedInside) {
+    return;
+  }
+  expanded.forEach((card) => {
+    card.classList.remove("expanded");
+    const cardId = card.dataset.cardId;
+    if (cardId) {
+      setExpanded(cardId, false);
+    }
+  });
+}
+
+document.addEventListener("pointerdown", closeStudyOverlaysOnOutsideClick, true);
 
 function toggleAdmin() {
   if (VIEWER_ONLY_BUILD) {
@@ -2026,10 +2047,6 @@ function renderHeaderActions() {
     headerModeToggle.innerHTML = "";
     const stack = document.createElement("div");
     stack.className = "mode-toggle-stack";
-    const difficulty = document.createElement("div");
-    difficulty.className = "eyebrow difficulty-label";
-    difficulty.textContent = "Difficulty";
-    stack.appendChild(difficulty);
     const wrap = document.createElement("div");
     wrap.className = "mode-toggle-buttons";
     [
@@ -2045,6 +2062,10 @@ function renderHeaderActions() {
       wrap.appendChild(button);
     });
     stack.appendChild(wrap);
+    const difficulty = document.createElement("div");
+    difficulty.className = "eyebrow difficulty-label";
+    difficulty.textContent = "Difficulty";
+    stack.appendChild(difficulty);
     headerModeToggle.appendChild(stack);
   }
 }
@@ -2499,15 +2520,51 @@ function renderHomePage() {
   if (!Array.isArray(home.blocks) || !home.blocks.length) {
     home.blocks = [createBlankInfoBlock()];
   }
+  if (!Number.isInteger(home.navOrder)) {
+    home.navOrder = 0;
+  }
 
+  const homePanel = document.createElement("section");
+  homePanel.className = "panel home-nav-panel";
+  const homePanelHeader = document.createElement("div");
+  homePanelHeader.className = "panel-header";
+  const homeTitle = document.createElement("h2");
+  homeTitle.textContent = "Home Navigation Box";
+  homePanelHeader.appendChild(homeTitle);
+  if (adminMode) {
+    const controls = document.createElement("div");
+    controls.className = "block-actions";
+    const moveUp = document.createElement("button");
+    moveUp.className = "btn btn-ghost";
+    moveUp.type = "button";
+    moveUp.textContent = "↑";
+    moveUp.addEventListener("click", () => { home.navOrder = Math.max(0, home.navOrder - 1); render(); });
+    const moveDown = document.createElement("button");
+    moveDown.className = "btn btn-ghost";
+    moveDown.type = "button";
+    moveDown.textContent = "↓";
+    moveDown.addEventListener("click", () => { home.navOrder = Math.min(getPageBlocks().length, home.navOrder + 1); render(); });
+    controls.appendChild(moveUp);
+    controls.appendChild(moveDown);
+    homePanelHeader.appendChild(controls);
+  }
+  homePanel.appendChild(homePanelHeader);
+
+  const homePanelBody = document.createElement("div");
+  homePanelBody.className = "panel-body";
   const tiles = document.createElement("section");
   tiles.className = "home-tiles";
+
   getHomeSubPages().forEach((subPage, subIndex) => {
     const id = subPage.id;
     const tile = document.createElement(adminMode ? "article" : "a");
     tile.className = "panel home-tile";
     tile.dataset.pageId = id;
-    if (!adminMode) tile.href = `#${id}`;
+    if (!adminMode) {
+      tile.href = `#${id}`;
+    } else {
+      tile.addEventListener("click", (event) => event.preventDefault());
+    }
 
     const tileLabel = subPage.title || subPage.navLabel || "Untitled page";
     if (subPage.staticSrc) {
@@ -2534,25 +2591,6 @@ function renderHomePage() {
     }
 
     if (adminMode) {
-      tile.draggable = true;
-      tile.addEventListener("dragstart", () => { draggedPageId = id; });
-      tile.addEventListener("dragover", (event) => { event.preventDefault(); tile.classList.add("drop-target"); });
-      tile.addEventListener("dragleave", () => { tile.classList.remove("drop-target"); });
-      tile.addEventListener("drop", (event) => {
-        event.preventDefault();
-        tile.classList.remove("drop-target");
-        const from = home.subPages.findIndex((item) => item.id === draggedPageId);
-        const to = home.subPages.findIndex((item) => item.id === id);
-        if (from >= 0 && to >= 0 && from !== to) {
-          const [moved] = home.subPages.splice(from, 1);
-          home.subPages.splice(to, 0, moved);
-          render();
-        }
-      });
-      tile.addEventListener("dragend", () => {
-        draggedPageId = "";
-        document.querySelectorAll(".home-tile.drop-target").forEach((item) => item.classList.remove("drop-target"));
-      });
       const controls = document.createElement("div");
       controls.className = "home-tile-controls-strip";
       controls.addEventListener("click", (event) => {
@@ -2560,83 +2598,38 @@ function renderHomePage() {
         event.stopPropagation();
       });
 
-      const topRow = document.createElement("div");
-      topRow.className = "tile-inline-actions";
-      const openBtn = document.createElement("a");
-      openBtn.className = "btn btn-outline btn-compact home-tile-open-btn";
-      openBtn.href = `#${id}`;
-      openBtn.textContent = "Open";
-      topRow.appendChild(openBtn);
-
-      const moveUp = document.createElement("button");
-      moveUp.className = "btn btn-ghost btn-compact";
-      moveUp.type = "button";
-      moveUp.textContent = "↑";
-      moveUp.addEventListener("click", (event) => { event.preventDefault(); moveItem(home.subPages, subIndex, -1); });
-      const moveDown = document.createElement("button");
-      moveDown.className = "btn btn-ghost btn-compact";
-      moveDown.type = "button";
-      moveDown.textContent = "↓";
-      moveDown.addEventListener("click", (event) => { event.preventDefault(); moveItem(home.subPages, subIndex, 1); });
-      topRow.appendChild(moveUp);
-      topRow.appendChild(moveDown);
-      const removePage = document.createElement("button");
-      removePage.className = "btn btn-danger btn-compact";
-      removePage.type = "button";
-      removePage.textContent = "Remove";
-      removePage.addEventListener("click", (event) => {
-        event.preventDefault();
-        const idx = home.subPages.findIndex((item) => item.id === subPage.id);
-        if (idx >= 0) {
-          home.subPages.splice(idx, 1);
-          delete state.pages[subPage.id];
-          if (currentPageId === subPage.id) {
-            currentPageId = "home";
-            window.location.hash = "#home";
-          }
-          render();
-        }
-      });
-      topRow.appendChild(removePage);
-
-      controls.appendChild(topRow);
-
       const renameWrap = document.createElement("div");
       renameWrap.className = "image-upload";
-      const renameLabel = document.createElement("label");
-      renameLabel.className = "eyebrow";
-      renameLabel.textContent = "Rename Sub Page";
       const renameInput = document.createElement("input");
       renameInput.type = "text";
       renameInput.className = "panel-title-input";
+      renameInput.placeholder = "Rename page";
       renameInput.value = tileLabel;
       renameInput.addEventListener("input", () => {
         setSubPageDisplay(subPage.id, renameInput.value || "Untitled page");
         title.textContent = renameInput.value || "Untitled page";
         renderPageNav();
-        renderHeaderActions();
       });
-      renameWrap.appendChild(renameLabel);
       renameWrap.appendChild(renameInput);
       controls.appendChild(renameWrap);
 
-      controls.appendChild(createImageUploadControl(subPage.staticSrc ? "Replace static background" : "Upload static background", (src) => {
+      controls.appendChild(createImageUploadControl("Upload static background", (src) => {
         subPage.mediaType = (src || "").startsWith("data:image/gif") ? "gif" : "image";
         subPage.staticSrc = src;
         render();
-      }, subPage.staticSrc ? () => { subPage.staticSrc = ""; render(); } : null));
+      }));
 
-      controls.appendChild(createImageUploadControl(subPage.backgroundSrc && subPage.mediaType !== "video" ? "Replace hover media" : "Upload hover image / gif", (src) => {
+      controls.appendChild(createImageUploadControl("Upload hover image / gif", (src) => {
         subPage.mediaType = (src || "").startsWith("data:image/gif") ? "gif" : "image";
         subPage.backgroundSrc = src;
         render();
-      }, subPage.mediaType !== "video" && subPage.backgroundSrc ? () => { subPage.backgroundSrc = ""; render(); } : null));
+      }));
 
-      controls.appendChild(createVideoUploadControl(subPage.backgroundSrc && subPage.mediaType === "video" ? "Replace hover video" : "Upload hover video", (src) => {
+      controls.appendChild(createVideoUploadControl("Upload hover video", (src) => {
         subPage.mediaType = "video";
         subPage.backgroundSrc = src;
         render();
-      }, subPage.mediaType === "video" && subPage.backgroundSrc ? () => { subPage.backgroundSrc = ""; render(); } : null));
+      }));
 
       const clearMedia = document.createElement("button");
       clearMedia.className = "btn btn-ghost btn-compact";
@@ -2649,6 +2642,41 @@ function renderHomePage() {
         render();
       });
       controls.appendChild(clearMedia);
+
+      const moveRow = document.createElement("div");
+      moveRow.className = "tile-inline-actions";
+      [
+        { label: "←", delta: -1, title: "Move left" },
+        { label: "→", delta: 1, title: "Move right" },
+        { label: "↑", delta: -1, title: "Move up" },
+        { label: "↓", delta: 1, title: "Move down" },
+      ].forEach((cfg) => {
+        const moveBtn = document.createElement("button");
+        moveBtn.className = "btn btn-ghost btn-compact";
+        moveBtn.type = "button";
+        moveBtn.textContent = cfg.label;
+        moveBtn.title = cfg.title;
+        moveBtn.addEventListener("click", () => moveItem(home.subPages, subIndex, cfg.delta));
+        moveRow.appendChild(moveBtn);
+      });
+      const removePage = document.createElement("button");
+      removePage.className = "btn btn-danger btn-compact";
+      removePage.type = "button";
+      removePage.textContent = "Delete page/tile";
+      removePage.addEventListener("click", () => {
+        const idx = home.subPages.findIndex((item) => item.id === subPage.id);
+        if (idx >= 0) {
+          home.subPages.splice(idx, 1);
+          delete state.pages[subPage.id];
+          if (currentPageId === subPage.id) {
+            currentPageId = "home";
+            window.location.hash = "#home";
+          }
+          render();
+        }
+      });
+      moveRow.appendChild(removePage);
+      controls.appendChild(moveRow);
       tile.appendChild(controls);
     }
 
@@ -2672,8 +2700,7 @@ function renderHomePage() {
     tiles.appendChild(tile);
   });
 
-  blocksContainer.appendChild(tiles);
-
+  homePanelBody.appendChild(tiles);
   if (adminMode) {
     const addSubPage = document.createElement("button");
     addSubPage.className = "btn btn-outline";
@@ -2686,29 +2713,24 @@ function renderHomePage() {
       state.pages[pageId] = createMetaPage(pageId, title);
       render();
     });
-    blocksContainer.appendChild(addSubPage);
+    homePanelBody.appendChild(addSubPage);
   }
+  homePanel.appendChild(homePanelBody);
 
-  getPageBlocks().forEach((block, index) => {
-    if (block.type === "rules") {
-      blocksContainer.appendChild(renderRulesBlock(block, index));
+  const renderedBlocks = getPageBlocks().map((block, index) => ({ block, index }));
+  const ordered = renderedBlocks.slice();
+  ordered.splice(Math.max(0, Math.min(home.navOrder, ordered.length)), 0, { homeNav: true });
+  ordered.forEach((entry) => {
+    if (entry.homeNav) {
+      blocksContainer.appendChild(homePanel);
       return;
     }
-    if (block.type === "flows") {
-      blocksContainer.appendChild(renderFlowsBlock(block, index));
-      return;
-    }
-    if (block.type === "calloutGroup") {
-      blocksContainer.appendChild(renderCalloutGroupBlock(block, index));
-      return;
-    }
-    if (block.type === "video") {
-      blocksContainer.appendChild(renderVideoBlock(block, index));
-      return;
-    }
-    if (block.type === "shipMeta") {
-      blocksContainer.appendChild(renderShipMetaBlock(block, index));
-    }
+    const { block, index } = entry;
+    if (block.type === "rules") blocksContainer.appendChild(renderRulesBlock(block, index));
+    else if (block.type === "flows") blocksContainer.appendChild(renderFlowsBlock(block, index));
+    else if (block.type === "calloutGroup") blocksContainer.appendChild(renderCalloutGroupBlock(block, index));
+    else if (block.type === "video") blocksContainer.appendChild(renderVideoBlock(block, index));
+    else if (block.type === "shipMeta") blocksContainer.appendChild(renderShipMetaBlock(block, index));
   });
 }
 
@@ -3268,14 +3290,15 @@ function renderFlowsBlock(block, index) {
 
 function getShipMetaIcon(type) {
   const map = {
-    weapon: "✦",
+    weapon: "🚀",
     powerplant: "⚡",
     shield: "🛡️",
     cooler: "❄️",
-    em: "📡",
+    em: "⚡",
     ir: "🌡️",
     cross: "📐",
     buy: "🛒",
+    unavailable: "🚫🛒",
   };
   return map[type] || "•";
 }
@@ -3421,9 +3444,30 @@ function renderShipMetaBlock(block, index) {
         buy.placeholder = activeMode === "premium" ? "Where to buy (required)" : "🛒 Where to buy";
         buy.addEventListener("input", () => { row.whereToBuy = buy.value; });
       } else {
-        buy.textContent = row.whereToBuy ? `${getShipMetaIcon("buy")} ${row.whereToBuy}` : "–";
+        const buyText = row.notAvailableInPu ? "Not available in PU shops" : row.whereToBuy;
+        const buyIcon = row.notAvailableInPu ? getShipMetaIcon("unavailable") : getShipMetaIcon("buy");
+        buy.textContent = buyText ? `${buyIcon} ${buyText}` : "–";
       }
       rowEl.appendChild(buy);
+      if (editing && activeMode === "premium") {
+        const quick = document.createElement("label");
+        quick.className = "ship-meta-not-pu";
+        const quickToggle = document.createElement("input");
+        quickToggle.type = "checkbox";
+        quickToggle.checked = Boolean(row.notAvailableInPu);
+        quickToggle.addEventListener("change", () => {
+          row.notAvailableInPu = quickToggle.checked;
+          if (quickToggle.checked && !row.whereToBuy) {
+            row.whereToBuy = "Not available in PU shops";
+            buy.value = row.whereToBuy;
+          }
+        });
+        const quickText = document.createElement("span");
+        quickText.textContent = "Not available in PU shops";
+        quick.appendChild(quickToggle);
+        quick.appendChild(quickText);
+        rowEl.appendChild(quick);
+      }
       components.appendChild(rowEl);
     });
     card.appendChild(components);
@@ -3874,7 +3918,7 @@ function renderCalloutGroupBlock(block, index) {
   const header = document.createElement("div");
   header.className = "category-header";
 
-  block.subBoxes = Array.isArray(block.subBoxes) && block.subBoxes.length ? block.subBoxes.slice(0, 2) : [{ id: `${block.id}-subbox-1`, title: "Study Sub-Box", description: "" }];
+  block.subBoxes = Array.isArray(block.subBoxes) && block.subBoxes.length ? block.subBoxes.slice(0, 3) : [{ id: `${block.id}-subbox-1`, title: "Study Sub-Box", description: "" }];
   const titleWrap = document.createElement("div");
   titleWrap.className = "block-title-wrap study-minimal-title";
   if (editing) {
@@ -3938,9 +3982,9 @@ function renderCalloutGroupBlock(block, index) {
     addSub.className = "btn btn-ghost btn-compact";
     addSub.type = "button";
     addSub.textContent = "Add Study Sub-Box";
-    addSub.disabled = block.subBoxes.length >= 2;
+    addSub.disabled = block.subBoxes.length >= 3;
     addSub.addEventListener("click", () => {
-      if (block.subBoxes.length < 2) {
+      if (block.subBoxes.length < 3) {
         block.subBoxes.push({ id: createId("study-sub"), title: "Study Sub-Box", description: "" });
         render();
       }
@@ -3971,6 +4015,20 @@ function renderCalloutGroupBlock(block, index) {
       subTitle.value = subBox.title || "Study Sub-Box";
       subTitle.addEventListener("input", () => { subBox.title = subTitle.value; });
       subHead.appendChild(subTitle);
+      const moveLeft = document.createElement("button");
+      moveLeft.className = "btn btn-ghost btn-compact";
+      moveLeft.type = "button";
+      moveLeft.textContent = "←";
+      moveLeft.disabled = subIndex === 0;
+      moveLeft.addEventListener("click", () => moveItem(block.subBoxes, subIndex, -1));
+      const moveRight = document.createElement("button");
+      moveRight.className = "btn btn-ghost btn-compact";
+      moveRight.type = "button";
+      moveRight.textContent = "→";
+      moveRight.disabled = subIndex >= block.subBoxes.length - 1;
+      moveRight.addEventListener("click", () => moveItem(block.subBoxes, subIndex, 1));
+      subHead.appendChild(moveLeft);
+      subHead.appendChild(moveRight);
       if (block.subBoxes.length > 1) {
         const delSub = document.createElement("button");
         delSub.className = "btn btn-danger btn-compact";
@@ -3992,7 +4050,7 @@ function renderCalloutGroupBlock(block, index) {
     subCard.appendChild(subHead);
 
     groupCallouts.filter((item) => (item.subBoxId || block.subBoxes[0]?.id) === subBox.id).forEach((item) => {
-      subCard.appendChild(renderCalloutCard(item, { editable: editing }));
+      subCard.appendChild(renderCalloutCard(item, { editable: editing, studyOverlay: true }));
     });
     subGrid.appendChild(subCard);
   });
@@ -4084,8 +4142,9 @@ function renderBlockActions(block, index, editing = false) {
 
 function renderCalloutCard(item, options = {}) {
   const editable = Boolean(options.editable);
+  const studyOverlay = Boolean(options.studyOverlay);
   const card = document.createElement("div");
-  card.className = `callout-card ${getVisibilityClass(item.visibility)}`;
+  card.className = `callout-card ${getVisibilityClass(item.visibility)}${studyOverlay ? " study-overlay-callout" : ""}`;
   const cardId = `${item.groupId}-${item.callName}`;
   card.dataset.cardId = cardId;
 
