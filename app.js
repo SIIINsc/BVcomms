@@ -4,9 +4,6 @@ const STORAGE_KEY = "scscp_state";
 const ADMIN_KEY = "scscp_admin";
 const THEME_KEY = "scscp_theme";
 const MODE_KEY = "scscp_view_mode";
-const HEADER_HEIGHT_KEY = "scscp_header_height";
-const HEADER_HEIGHT_MIN = 150;
-const HEADER_HEIGHT_MAX = 460;
 const ROLE_COLOR_OPTIONS = [
   { label: "Azure", value: "#4cc3ff" },
   { label: "Violet", value: "#9e62ff" },
@@ -621,9 +618,8 @@ let currentPageId = "home";
 let shouldAnimatePageContent = false;
 let shouldAnimateNavDeploy = false;
 let draggedPageId = "";
-let headerEditorOpen = false;
-let headerResizeSession = null;
 let pageNavIndicatorState = null;
+let categoryNavIndicatorState = null;
 
 const headerContent = document.getElementById("headerContent");
 const footerContent = document.getElementById("footerContent");
@@ -637,8 +633,7 @@ const headerSocials = document.getElementById("headerSocials");
 const pageNav = document.getElementById("pageNav");
 const headerModeToggle = document.getElementById("headerModeToggle");
 const siteHeader = document.querySelector(".site-header");
-const headerResizeHandle = document.getElementById("headerResizeHandle");
-const headerEditorMount = document.getElementById("headerEditorMount");
+const studyHoverCloseTimers = new Map();
 
 function createId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -1551,8 +1546,6 @@ function closeStudyOverlaysOnOutsideClick(event) {
   collapseExpandedStudyOverlays();
 }
 
-document.addEventListener("pointerdown", closeStudyOverlaysOnOutsideClick, true);
-
 function collapseExpandedStudyOverlays() {
   const expanded = document.querySelectorAll(".study-overlay-callout.expanded");
   expanded.forEach((card) => {
@@ -1562,29 +1555,12 @@ function collapseExpandedStudyOverlays() {
       setExpanded(cardId, false);
     }
   });
-  teardownStudyOverlayBackdrop();
 }
 
 function ensureStudyOverlayBackdrop() {
-  let backdrop = document.querySelector(".study-overlay-backdrop");
-  if (!backdrop) {
-    backdrop = document.createElement("div");
-    backdrop.className = "study-overlay-backdrop";
-    backdrop.addEventListener("click", () => {
-      collapseExpandedStudyOverlays();
-    });
-    document.body.appendChild(backdrop);
-  }
-  backdrop.classList.add("is-visible");
-  document.body.classList.add("study-overlay-open");
 }
 
 function teardownStudyOverlayBackdrop() {
-  const backdrop = document.querySelector(".study-overlay-backdrop");
-  if (backdrop) {
-    backdrop.classList.remove("is-visible");
-  }
-  document.body.classList.remove("study-overlay-open");
 }
 
 function rerenderPreservingScroll() {
@@ -1659,110 +1635,17 @@ function renderHeader() {
     }, { className: "eyebrow header-eyebrow", placeholder: "Star Citizen" })
   );
 
-  if (adminMode) {
-    wrapper.appendChild(
-      createInlineInput("title", state.header.title, (value) => {
-        state.header.title = value;
-      })
-    );
-    wrapper.appendChild(
-      createInlineTextarea("subhead", state.header.subtitle, (value) => {
-        state.header.subtitle = value;
-      })
-    );
-
-    const logoEditor = document.createElement("div");
-    logoEditor.className = "header-logo-editor";
-    const logoLabel = document.createElement("label");
-    logoLabel.className = "eyebrow";
-    logoLabel.textContent = "Header logo (URL or base64)";
-    const logoInput = document.createElement("input");
-    logoInput.type = "text";
-    logoInput.className = "inline-input";
-    logoInput.value = state.header.logoSrc || "";
-    logoInput.placeholder = "data:image/... or https://";
-    logoInput.addEventListener("input", () => {
-      state.header.logoSrc = logoInput.value.trim();
-      render();
-    });
-    const logoUploadLabel = document.createElement("label");
-    logoUploadLabel.className = "btn btn-outline";
-    logoUploadLabel.textContent = "Upload logo";
-    logoUploadLabel.setAttribute("for", "headerLogoUpload");
-    const logoUploadInput = document.createElement("input");
-    logoUploadInput.type = "file";
-    logoUploadInput.id = "headerLogoUpload";
-    logoUploadInput.accept = "image/*";
-    logoUploadInput.addEventListener("change", () => {
-      const file = logoUploadInput.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          state.header.logoSrc = reader.result;
-          render();
-        };
-        reader.readAsDataURL(file);
-      }
-      logoUploadInput.value = "";
-    });
-    const altInput = document.createElement("input");
-    altInput.type = "text";
-    altInput.className = "inline-input";
-    altInput.value = state.header.logoAlt || "";
-    altInput.placeholder = "Logo alt text";
-    altInput.addEventListener("input", () => {
-      state.header.logoAlt = altInput.value;
-    });
-    const clearLogo = document.createElement("button");
-    clearLogo.type = "button";
-    clearLogo.className = "btn btn-ghost btn-compact";
-    clearLogo.textContent = "Clear logo";
-    clearLogo.addEventListener("click", () => {
-      state.header.logoSrc = "";
-      logoInput.value = "";
-      render();
-    });
-    logoEditor.appendChild(logoLabel);
-    logoEditor.appendChild(logoInput);
-    logoEditor.appendChild(logoUploadLabel);
-    logoEditor.appendChild(logoUploadInput);
-    logoEditor.appendChild(clearLogo);
-    logoEditor.appendChild(altInput);
-    wrapper.appendChild(logoEditor);
-  } else {
-    const title = renderEditableText("h1", state.header.title, (value) => { state.header.title = value; }, { className: "header-title" });
-
-    const subhead = renderEditableText("p", state.header.subtitle, (value) => { state.header.subtitle = value; }, { className: "subhead header-subtitle-multiline", placeholder: "Subtitle", multiline: true });
-    wrapper.appendChild(title);
-    wrapper.appendChild(subhead);
-  }
+  const title = document.createElement("h1");
+  title.className = "header-title";
+  title.textContent = state.header.title;
+  const subhead = document.createElement("p");
+  subhead.className = "subhead header-subtitle-multiline";
+  subhead.textContent = state.header.subtitle;
+  wrapper.appendChild(title);
+  wrapper.appendChild(subhead);
 
   brand.appendChild(wrapper);
   headerContent.appendChild(brand);
-
-  if (headerEditorMount) {
-    headerEditorMount.innerHTML = "";
-    if (adminMode) {
-      const toggle = document.createElement("button");
-      toggle.type = "button";
-      toggle.className = `btn btn-outline btn-compact header-editor-toggle${headerEditorOpen ? " is-open" : ""}`;
-      toggle.textContent = "Edit Header";
-      toggle.addEventListener("click", () => {
-        headerEditorOpen = !headerEditorOpen;
-        renderHeader();
-      });
-      headerEditorMount.appendChild(toggle);
-      if (headerEditorOpen) {
-        const panel = document.createElement("div");
-        panel.className = "header-editor-panel panel";
-        const panelBody = document.createElement("div");
-        panelBody.className = "panel-body";
-        panelBody.appendChild(createHeaderMediaSection());
-        panel.appendChild(panelBody);
-        headerEditorMount.appendChild(panel);
-      }
-    }
-  }
 
   renderAdminBox();
   renderHeaderSocials();
@@ -1773,8 +1656,81 @@ function createHeaderMediaSection() {
   headerSection.className = "admin-section";
   const headerTitle = document.createElement("div");
   headerTitle.className = "admin-section-title";
-  headerTitle.textContent = "Header media";
+  headerTitle.textContent = "Header";
   headerSection.appendChild(headerTitle);
+
+  const textRow = document.createElement("div");
+  textRow.className = "admin-row";
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.className = "panel-title-input";
+  titleInput.placeholder = "Header title";
+  titleInput.value = state.header.title || "";
+  titleInput.addEventListener("input", () => {
+    state.header.title = titleInput.value;
+    renderHeader();
+  });
+  const subtitleInput = document.createElement("textarea");
+  subtitleInput.className = "panel-title-input";
+  subtitleInput.rows = 2;
+  subtitleInput.placeholder = "Header subtitle";
+  subtitleInput.value = state.header.subtitle || "";
+  subtitleInput.addEventListener("input", () => {
+    state.header.subtitle = subtitleInput.value;
+    renderHeader();
+  });
+  textRow.appendChild(titleInput);
+  textRow.appendChild(subtitleInput);
+  headerSection.appendChild(textRow);
+
+  const logoRow = document.createElement("div");
+  logoRow.className = "admin-row";
+  logoRow.appendChild(
+    createImageUploadControl(
+      state.header.logoSrc ? "Replace logo" : "Upload logo",
+      (src) => {
+        state.header.logoSrc = src;
+        renderHeader();
+      },
+      state.header.logoSrc
+        ? () => {
+            state.header.logoSrc = "";
+            renderHeader();
+          }
+        : null
+    )
+  );
+  const logoAltInput = document.createElement("input");
+  logoAltInput.type = "text";
+  logoAltInput.className = "panel-title-input";
+  logoAltInput.placeholder = "Logo alt text";
+  logoAltInput.value = state.header.logoAlt || "";
+  logoAltInput.addEventListener("input", () => {
+    state.header.logoAlt = logoAltInput.value;
+  });
+  logoRow.appendChild(logoAltInput);
+  headerSection.appendChild(logoRow);
+
+  const themeRow = document.createElement("div");
+  themeRow.className = "admin-row";
+  const themeLabel = document.createElement("span");
+  themeLabel.className = "admin-note";
+  themeLabel.textContent = "Theme";
+  const headerThemeSelect = document.createElement("select");
+  headerThemeSelect.className = "panel-title-input";
+  Object.entries(THEMES).forEach(([key, theme]) => {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = theme.label;
+    option.selected = key === activeTheme;
+    headerThemeSelect.appendChild(option);
+  });
+  headerThemeSelect.addEventListener("change", () => {
+    setTheme(headerThemeSelect.value);
+  });
+  themeRow.appendChild(themeLabel);
+  themeRow.appendChild(headerThemeSelect);
+  headerSection.appendChild(themeRow);
 
   const bgRow = document.createElement("div");
   bgRow.className = "admin-row";
@@ -2131,6 +2087,9 @@ function renderAdminBox() {
   blockRow.appendChild(addShipMeta);
   actionSection.appendChild(blockRow);
 
+  if (isHomePage) {
+    adminBox.appendChild(createHeaderMediaSection());
+  }
   if (isHomePage && onlineSection) {
     adminBox.appendChild(onlineSection);
   }
@@ -2216,59 +2175,28 @@ function updatePageNavIndicator() {
   pageNavIndicatorState = { x: nextX, width: nextWidth };
 }
 
-function loadStoredHeaderHeight() {
-  const value = Number(localStorage.getItem(HEADER_HEIGHT_KEY));
-  if (!Number.isFinite(value)) {
-    return null;
-  }
-  return Math.max(HEADER_HEIGHT_MIN, Math.min(HEADER_HEIGHT_MAX, value));
-}
-
-function applyHeaderHeight(value) {
-  if (!siteHeader) {
+function updateCategoryNavIndicator() {
+  if (!categoryNav) {
     return;
   }
-  const clamped = Math.max(HEADER_HEIGHT_MIN, Math.min(HEADER_HEIGHT_MAX, value));
-  siteHeader.style.height = `${clamped}px`;
-  localStorage.setItem(HEADER_HEIGHT_KEY, String(clamped));
-  updateScrollOffset();
-}
-
-function initializeHeaderResize() {
-  const saved = loadStoredHeaderHeight();
-  if (saved) {
-    applyHeaderHeight(saved);
-  }
-  if (!headerResizeHandle || !siteHeader) {
+  const indicator = categoryNav.querySelector(".category-nav-indicator");
+  const activeLink = categoryNav.querySelector("a.is-active");
+  if (!indicator) {
     return;
   }
-  headerResizeHandle.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    headerResizeSession = {
-      startY: event.clientY,
-      startHeight: siteHeader.offsetHeight,
-    };
-    headerResizeHandle.classList.add("is-dragging");
-    document.body.classList.add("resizing-header");
-    headerResizeHandle.setPointerCapture(event.pointerId);
-  });
-
-  const stopResize = () => {
-    headerResizeSession = null;
-    headerResizeHandle.classList.remove("is-dragging");
-    document.body.classList.remove("resizing-header");
-  };
-
-  headerResizeHandle.addEventListener("pointermove", (event) => {
-    if (!headerResizeSession) {
-      return;
-    }
-    const delta = event.clientY - headerResizeSession.startY;
-    applyHeaderHeight(headerResizeSession.startHeight + delta);
-  });
-
-  headerResizeHandle.addEventListener("pointerup", stopResize);
-  headerResizeHandle.addEventListener("pointercancel", stopResize);
+  if (!activeLink) {
+    indicator.style.opacity = "0";
+    categoryNavIndicatorState = null;
+    return;
+  }
+  const navRect = categoryNav.getBoundingClientRect();
+  const linkRect = activeLink.getBoundingClientRect();
+  const nextWidth = linkRect.width;
+  const nextX = linkRect.left - navRect.left;
+  indicator.style.width = `${nextWidth}px`;
+  indicator.style.transform = `translateX(${nextX}px)`;
+  indicator.style.opacity = "1";
+  categoryNavIndicatorState = { x: nextX, width: nextWidth };
 }
 
 function getHeaderSizeText() {
@@ -2645,9 +2573,19 @@ function renderFooter() {
 }
 
 function renderNav() {
+  if (!categoryNav) return;
+  const indicator = categoryNav.querySelector(".category-nav-indicator") || document.createElement("span");
   categoryNav.innerHTML = "";
+  indicator.className = "category-nav-indicator";
+  if (categoryNavIndicatorState) {
+    indicator.style.width = `${categoryNavIndicatorState.width}px`;
+    indicator.style.transform = `translateX(${categoryNavIndicatorState.x}px)`;
+    indicator.style.opacity = "1";
+  }
+  categoryNav.appendChild(indicator);
   categoryNav.classList.remove("nav-deploy");
   if (currentPageId === "home") {
+    indicator.style.opacity = "0";
     return;
   }
   if (shouldAnimateNavDeploy) {
@@ -2655,21 +2593,26 @@ function renderNav() {
       categoryNav.classList.add("nav-deploy");
     });
   }
+  const activeBlockId = (window.location.hash || "").slice(1).split("/")[1];
   getPageBlocks().forEach((block, index) => {
     const link = document.createElement("a");
     link.href = `#${currentPageId}/${block.id}`;
     link.textContent = block.title || "Untitled block";
     link.style.setProperty("--deploy-order", String(index));
+    if (activeBlockId && activeBlockId === block.id) {
+      link.classList.add("is-active");
+    }
     categoryNav.appendChild(link);
   });
+  requestAnimationFrame(updateCategoryNavIndicator);
 }
 
 function renderPageNav() {
   if (!pageNav) return;
+  const indicator = pageNav.querySelector(".page-nav-indicator") || document.createElement("span");
   const hadIndicatorState = pageNavIndicatorState;
   pageNav.innerHTML = "";
 
-  const indicator = document.createElement("span");
   indicator.className = "page-nav-indicator";
   if (hadIndicatorState) {
     indicator.style.width = `${hadIndicatorState.width}px`;
@@ -3611,12 +3554,6 @@ function renderShipMetaBlock(block, index) {
         infoBtn.classList.add("is-disabled");
       }
     }
-    const titleBar = document.createElement("div");
-    titleBar.className = "ship-meta-title-bar";
-    titleBar.appendChild(titleRow);
-    titleBar.appendChild(infoBtn);
-    card.appendChild(titleBar);
-
     const modeToggle = document.createElement("div");
     modeToggle.className = "mode-toggle-buttons ship-mode-toggle";
     [
@@ -3627,13 +3564,21 @@ function renderShipMetaBlock(block, index) {
       btn.type = "button";
       btn.className = `mode-btn${activeMode === entry.value ? " is-active" : ""}`;
       btn.textContent = entry.label;
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         metaItem.activeMode = entry.value;
         rerenderPreservingScroll();
       });
       modeToggle.appendChild(btn);
     });
-    card.appendChild(modeToggle);
+
+    const topRow = document.createElement("div");
+    topRow.className = "ship-meta-top-row";
+    topRow.appendChild(titleRow);
+    topRow.appendChild(modeToggle);
+    topRow.appendChild(infoBtn);
+    card.appendChild(topRow);
 
     if (editing) {
       card.appendChild(createImageUploadControl(metaItem.backgroundSrc ? "Replace sub-box background" : "Upload sub-box background", (src) => { metaItem.backgroundSrc = src; render(); }, metaItem.backgroundSrc ? () => { metaItem.backgroundSrc = ""; render(); } : null));
@@ -4453,8 +4398,7 @@ function renderCalloutCard(item, options = {}) {
 
   const header = document.createElement("div");
   header.className = "callout-header";
-  header.addEventListener("click", () => {
-    const expanded = !card.classList.contains("expanded");
+  const setCardExpanded = (expanded) => {
     const groupScope = card.closest(".study-subbox-grid") || card.parentElement;
     if (expanded && groupScope) {
       groupScope.querySelectorAll(".callout-card.expanded").forEach((openCard) => {
@@ -4467,17 +4411,27 @@ function renderCalloutCard(item, options = {}) {
     }
     card.classList.toggle("expanded", expanded);
     setExpanded(cardId, expanded);
-    if (studyOverlay) {
-      if (expanded) {
-        ensureStudyOverlayBackdrop();
-      } else {
-        const anyExpanded = document.querySelector(".study-overlay-callout.expanded");
-        if (!anyExpanded) {
-          teardownStudyOverlayBackdrop();
-        }
-      }
-    }
+  };
+
+  header.addEventListener("click", () => {
+    setCardExpanded(!card.classList.contains("expanded"));
   });
+
+  if (studyOverlay) {
+    card.addEventListener("mouseenter", () => {
+      const timer = studyHoverCloseTimers.get(cardId);
+      if (timer) clearTimeout(timer);
+      studyHoverCloseTimers.delete(cardId);
+      setCardExpanded(true);
+    });
+    card.addEventListener("mouseleave", () => {
+      const timeout = window.setTimeout(() => {
+        setCardExpanded(false);
+        studyHoverCloseTimers.delete(cardId);
+      }, 180);
+      studyHoverCloseTimers.set(cardId, timeout);
+    });
+  }
 
   const title = document.createElement("div");
   title.className = "callout-title";
@@ -6157,7 +6111,6 @@ window.addEventListener("resize", () => {
 });
 
 try {
-  initializeHeaderResize();
   setTheme(activeTheme);
   setViewMode(activeMode);
   syncPageFromHash();
