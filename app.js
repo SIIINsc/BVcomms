@@ -623,6 +623,7 @@ let shouldAnimateNavDeploy = false;
 let draggedPageId = "";
 let headerEditorOpen = false;
 let headerResizeSession = null;
+let pageNavIndicatorState = null;
 
 const headerContent = document.getElementById("headerContent");
 const footerContent = document.getElementById("footerContent");
@@ -1540,12 +1541,20 @@ function updateScrollOffset() {
 function closeStudyOverlaysOnOutsideClick(event) {
   const expanded = document.querySelectorAll(".study-overlay-callout.expanded");
   if (!expanded.length) {
+    teardownStudyOverlayBackdrop();
     return;
   }
   const clickedInside = event.target.closest && event.target.closest(".study-overlay-callout");
   if (clickedInside) {
     return;
   }
+  collapseExpandedStudyOverlays();
+}
+
+document.addEventListener("pointerdown", closeStudyOverlaysOnOutsideClick, true);
+
+function collapseExpandedStudyOverlays() {
+  const expanded = document.querySelectorAll(".study-overlay-callout.expanded");
   expanded.forEach((card) => {
     card.classList.remove("expanded");
     const cardId = card.dataset.cardId;
@@ -1553,9 +1562,30 @@ function closeStudyOverlaysOnOutsideClick(event) {
       setExpanded(cardId, false);
     }
   });
+  teardownStudyOverlayBackdrop();
 }
 
-document.addEventListener("pointerdown", closeStudyOverlaysOnOutsideClick, true);
+function ensureStudyOverlayBackdrop() {
+  let backdrop = document.querySelector(".study-overlay-backdrop");
+  if (!backdrop) {
+    backdrop = document.createElement("div");
+    backdrop.className = "study-overlay-backdrop";
+    backdrop.addEventListener("click", () => {
+      collapseExpandedStudyOverlays();
+    });
+    document.body.appendChild(backdrop);
+  }
+  backdrop.classList.add("is-visible");
+  document.body.classList.add("study-overlay-open");
+}
+
+function teardownStudyOverlayBackdrop() {
+  const backdrop = document.querySelector(".study-overlay-backdrop");
+  if (backdrop) {
+    backdrop.classList.remove("is-visible");
+  }
+  document.body.classList.remove("study-overlay-open");
+}
 
 function rerenderPreservingScroll() {
   pendingScrollY = window.scrollY;
@@ -2168,14 +2198,22 @@ function updatePageNavIndicator() {
   }
   const indicator = pageNav.querySelector(".page-nav-indicator");
   const activeLink = pageNav.querySelector("a.is-active");
-  if (!indicator || !activeLink) {
+  if (!indicator) {
+    return;
+  }
+  if (!activeLink) {
+    indicator.style.opacity = "0";
+    pageNavIndicatorState = null;
     return;
   }
   const navRect = pageNav.getBoundingClientRect();
   const linkRect = activeLink.getBoundingClientRect();
-  indicator.style.width = `${linkRect.width}px`;
-  indicator.style.transform = `translateX(${linkRect.left - navRect.left}px)`;
+  const nextWidth = linkRect.width;
+  const nextX = linkRect.left - navRect.left;
+  indicator.style.width = `${nextWidth}px`;
+  indicator.style.transform = `translateX(${nextX}px)`;
   indicator.style.opacity = "1";
+  pageNavIndicatorState = { x: nextX, width: nextWidth };
 }
 
 function loadStoredHeaderHeight() {
@@ -2628,10 +2666,16 @@ function renderNav() {
 
 function renderPageNav() {
   if (!pageNav) return;
+  const hadIndicatorState = pageNavIndicatorState;
   pageNav.innerHTML = "";
 
   const indicator = document.createElement("span");
   indicator.className = "page-nav-indicator";
+  if (hadIndicatorState) {
+    indicator.style.width = `${hadIndicatorState.width}px`;
+    indicator.style.transform = `translateX(${hadIndicatorState.x}px)`;
+    indicator.style.opacity = "1";
+  }
   pageNav.appendChild(indicator);
 
   const pages = getVisiblePageDefinitions();
@@ -2923,6 +2967,11 @@ function render() {
 
   if (currentPageId === "home") {
     renderHomePage();
+    if (document.querySelector(".study-overlay-callout.expanded")) {
+      ensureStudyOverlayBackdrop();
+    } else {
+      teardownStudyOverlayBackdrop();
+    }
     updateScrollOffset();
     scrollToHashTarget();
     shouldAnimatePageContent = false;
@@ -2958,6 +3007,11 @@ function render() {
     requestAnimationFrame(() => blocksContainer.classList.add("page-content-enter"));
   }
   updateScrollOffset();
+  if (document.querySelector(".study-overlay-callout.expanded")) {
+    ensureStudyOverlayBackdrop();
+  } else {
+    teardownStudyOverlayBackdrop();
+  }
   scrollToHashTarget();
   if (typeof pendingScrollY === "number") {
     window.scrollTo(0, pendingScrollY);
@@ -4413,6 +4467,16 @@ function renderCalloutCard(item, options = {}) {
     }
     card.classList.toggle("expanded", expanded);
     setExpanded(cardId, expanded);
+    if (studyOverlay) {
+      if (expanded) {
+        ensureStudyOverlayBackdrop();
+      } else {
+        const anyExpanded = document.querySelector(".study-overlay-callout.expanded");
+        if (!anyExpanded) {
+          teardownStudyOverlayBackdrop();
+        }
+      }
+    }
   });
 
   const title = document.createElement("div");
