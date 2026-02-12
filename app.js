@@ -49,6 +49,7 @@ const DEFAULT_STATE = {
     logoAlt: "Header logo",
     backgroundSrc: "",
     themeBackgrounds: {},
+    themePageBackgrounds: {},
     socialIcons: [
       { src: "", url: "" },
       { src: "", url: "" },
@@ -58,6 +59,17 @@ const DEFAULT_STATE = {
   ui: {
     theme: DEFAULT_THEME_NAME,
     viewMode: "basic",
+  },
+  proPage: {
+    title: "Pro access",
+    body: "Advanced tooling is being prepared. This placeholder page lets you stage future premium content without changing the current workflow.",
+    features: [
+      "Editable feature row",
+      "Theme-aware layout",
+      "Internal route only",
+    ],
+    ctaText: "Join waitlist",
+    ctaUrl: "",
   },
   roleLabels: [
     { id: "shotCaller", label: "Shot caller", color: "#9e62ff" },
@@ -571,8 +583,7 @@ let currentPageId = "home";
 let shouldAnimatePageContent = false;
 let shouldAnimateNavDeploy = false;
 let draggedPageId = "";
-let pageNavIndicatorState = null;
-let categoryNavIndicatorState = null;
+let sharedNavIndicatorTarget = null;
 
 const headerContent = document.getElementById("headerContent");
 const footerContent = document.getElementById("footerContent");
@@ -588,6 +599,7 @@ const headerModeToggle = document.getElementById("headerModeToggle");
 const siteHeader = document.querySelector(".site-header");
 const studyHoverCloseTimers = new Map();
 let headerBgTransitionTimer = null;
+let pageBgTransitionTimer = null;
 
 function createId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -703,12 +715,12 @@ function createBlankShipMetaBlock() {
 function createBlankShipMetaItem() {
   const createModeData = () => ({
     components: [
-      { id: createId("ship-component"), key: "weapon", component: "", whereToBuy: "" },
-      { id: createId("ship-component"), key: "shield", component: "", whereToBuy: "" },
-      { id: createId("ship-component"), key: "powerplant", component: "", whereToBuy: "" },
-      { id: createId("ship-component"), key: "cooler", component: "", whereToBuy: "" },
+      { id: createId("ship-component"), key: "weapon", component: "", whereToBuy: "", quantity: 1 },
+      { id: createId("ship-component"), key: "shield", component: "", whereToBuy: "", quantity: 1 },
+      { id: createId("ship-component"), key: "powerplant", component: "", whereToBuy: "", quantity: 1 },
+      { id: createId("ship-component"), key: "cooler", component: "", whereToBuy: "", quantity: 1 },
     ],
-    signatures: { em: "", ir: "", crossSection: "", sustainedDps: "", alphaDamage: "" },
+    signatures: { em: "", ir: "", crossSection: "", sustainedDps: "", alphaDamage: "", shieldHp: "", armorHp: "", totalHp: "" },
     summary: "",
     lifeSupportOffRequired: false,
   });
@@ -833,7 +845,7 @@ function migrateToPages(nextState) {
 }
 
 function getCurrentPage() {
-  if (currentPageId === "home") {
+  if (currentPageId === "home" || currentPageId === "pro") {
     return null;
   }
   return state.pages[currentPageId] || state.pages.protocol;
@@ -1003,6 +1015,9 @@ function normalizeState(source) {
   if (!nextState.header.themeBackgrounds || typeof nextState.header.themeBackgrounds !== "object") {
     nextState.header.themeBackgrounds = {};
   }
+  if (!nextState.header.themePageBackgrounds || typeof nextState.header.themePageBackgrounds !== "object") {
+    nextState.header.themePageBackgrounds = {};
+  }
   if (!Array.isArray(nextState.header.socialIcons)) {
     nextState.header.socialIcons = deepClone(DEFAULT_STATE.header.socialIcons);
   } else {
@@ -1022,6 +1037,7 @@ function normalizeState(source) {
   nextState.ui.viewMode = normalizeViewMode(nextState.ui.viewMode || "basic");
   nextState.header.themeBackgrounds[nextState.ui.theme] = nextState.header.themeBackgrounds[nextState.ui.theme] || nextState.header.backgroundSrc || "";
   nextState.header.backgroundSrc = nextState.header.themeBackgrounds[nextState.ui.theme] || "";
+  nextState.header.themePageBackgrounds[nextState.ui.theme] = nextState.header.themePageBackgrounds[nextState.ui.theme] || "";
   nextState.roleLabels = normalizeRoleLabels(nextState.roleLabels);
   const defaultAccounts = deepClone(DEFAULT_STATE.onlineAuth);
   const sourceAuth = Array.isArray(nextState.onlineAuth)
@@ -1029,6 +1045,13 @@ function normalizeState(source) {
     : (nextState.onlineAuth && typeof nextState.onlineAuth === "object"
         ? [nextState.onlineAuth]
         : defaultAccounts);
+  nextState.proPage = {
+    ...deepClone(DEFAULT_STATE.proPage),
+    ...(nextState.proPage || {}),
+  };
+  if (!Array.isArray(nextState.proPage.features)) nextState.proPage.features = deepClone(DEFAULT_STATE.proPage.features);
+  nextState.proPage.features = nextState.proPage.features.map((item) => String(item || ""));
+
   nextState.onlineAuth = sourceAuth
     .map((entry) => ({
       id: entry?.id || createId("online-auth"),
@@ -1211,6 +1234,7 @@ function normalizeBlocks(blocks) {
               key,
               component: typeof legacy.component === "string" ? legacy.component : "",
               whereToBuy: typeof legacy.whereToBuy === "string" ? legacy.whereToBuy : "",
+              quantity: Number(legacy.quantity) > 0 ? Number(legacy.quantity) : 1,
             };
           }),
           signatures: {
@@ -1219,6 +1243,9 @@ function normalizeBlocks(blocks) {
             crossSection: typeof signatures.crossSection === "string" ? signatures.crossSection : legacyCross,
             sustainedDps: typeof signatures.sustainedDps === "number" || typeof signatures.sustainedDps === "string" ? signatures.sustainedDps : "",
             alphaDamage: typeof signatures.alphaDamage === "number" || typeof signatures.alphaDamage === "string" ? signatures.alphaDamage : "",
+            shieldHp: typeof signatures.shieldHp === "number" || typeof signatures.shieldHp === "string" ? signatures.shieldHp : "",
+            armorHp: typeof signatures.armorHp === "number" || typeof signatures.armorHp === "string" ? signatures.armorHp : "",
+            totalHp: typeof signatures.totalHp === "number" || typeof signatures.totalHp === "string" ? signatures.totalHp : "",
           },
           summary: typeof base.summary === "string" ? base.summary : "",
           lifeSupportOffRequired: Boolean(base.lifeSupportOffRequired),
@@ -1381,9 +1408,11 @@ function setTheme(themeName) {
     state.ui.theme = activeTheme;
   }
   const nextHeaderBg = state?.header?.themeBackgrounds?.[activeTheme] || "";
+  const nextPageBg = state?.header?.themePageBackgrounds?.[activeTheme] || "";
   state.header.backgroundSrc = nextHeaderBg;
   applyTheme(activeTheme);
   applyHeaderBackground(nextHeaderBg, true);
+  applyPageBackground(nextPageBg, true);
   renderHeader();
 }
 
@@ -1398,7 +1427,7 @@ function updateModeToggleUI() {
   }
   const buttons = headerModeToggle.querySelectorAll(".mode-btn");
   buttons.forEach((button) => {
-    const isActive = button.textContent?.toLowerCase() === activeMode;
+    const isActive = !button.classList.contains("is-pro") && button.textContent?.trim().toLowerCase().startsWith(activeMode);
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
   });
@@ -1459,7 +1488,7 @@ function syncPageFromHash() {
   const raw = (window.location.hash || "#home").slice(1);
   const [pageId] = raw.split("/");
   const pages = getPageDefinitionMap();
-  const nextPageId = pages[pageId] ? pageId : "home";
+  const nextPageId = pageId === "pro" ? "pro" : (pages[pageId] ? pageId : "home");
   const changed = nextPageId !== currentPageId;
   currentPageId = nextPageId;
   return changed;
@@ -2068,17 +2097,24 @@ function renderHeaderActions() {
     [
       { id: "basic", label: "Basic" },
       { id: "advanced", label: "Advanced" },
-      { id: "premium", label: "Premium 🔒", locked: true },
+      { id: "pro", label: "Pro", isPro: true },
     ].forEach((mode) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `mode-btn${activeMode === mode.id ? " is-active" : ""}`;
+      const isActive = !mode.isPro && activeMode === mode.id;
+      button.className = `mode-btn${isActive ? " is-active" : ""}`;
       button.textContent = mode.label;
-      button.setAttribute("aria-pressed", activeMode === mode.id ? "true" : "false");
-      if (mode.locked) {
-        button.classList.add("is-locked");
-        button.disabled = true;
-        button.title = "Premium is locked";
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      if (mode.isPro) {
+        button.classList.add("is-pro");
+        button.dataset.tooltip = "In progress";
+        const lock = document.createElement("span");
+        lock.className = "mode-lock";
+        lock.textContent = "🔒";
+        button.appendChild(lock);
+        button.addEventListener("click", () => {
+          window.location.hash = "#pro";
+        });
       } else {
         button.addEventListener("click", () => setViewMode(mode.id));
       }
@@ -2093,52 +2129,72 @@ function renderHeaderActions() {
   }
 }
 
-function updatePageNavIndicator() {
-  if (!pageNav) {
-    return;
-  }
-  const indicator = pageNav.querySelector(".page-nav-indicator");
-  const activeLink = pageNav.querySelector("a.is-active");
+function ensureSharedNavIndicator() {
+  const host = document.querySelector(".header-navs");
+  if (!host) return null;
+  let indicator = host.querySelector(".nav-shared-indicator");
   if (!indicator) {
-    return;
+    indicator = document.createElement("span");
+    indicator.className = "nav-shared-indicator";
+    host.appendChild(indicator);
   }
-  if (!activeLink) {
-    indicator.style.opacity = "0";
-    pageNavIndicatorState = null;
-    return;
-  }
-  const navRect = pageNav.getBoundingClientRect();
-  const linkRect = activeLink.getBoundingClientRect();
-  const nextWidth = linkRect.width;
-  const nextX = linkRect.left - navRect.left;
-  indicator.style.width = `${nextWidth}px`;
-  indicator.style.transform = `translateX(${nextX}px)`;
-  indicator.style.opacity = "1";
-  pageNavIndicatorState = { x: nextX, width: nextWidth };
+  return indicator;
 }
 
-function updateCategoryNavIndicator() {
-  if (!categoryNav) {
-    return;
-  }
-  const indicator = categoryNav.querySelector(".category-nav-indicator");
-  const activeLink = categoryNav.querySelector("a.is-active");
-  if (!indicator) {
-    return;
-  }
-  if (!activeLink) {
+function moveSharedNavIndicator(target, animateFromMain = false) {
+  const host = document.querySelector(".header-navs");
+  const indicator = ensureSharedNavIndicator();
+  if (!host || !indicator) return;
+  if (!target) {
     indicator.style.opacity = "0";
-    categoryNavIndicatorState = null;
+    sharedNavIndicatorTarget = null;
     return;
   }
-  const navRect = categoryNav.getBoundingClientRect();
-  const linkRect = activeLink.getBoundingClientRect();
-  const nextWidth = linkRect.width;
-  const nextX = linkRect.left - navRect.left;
-  indicator.style.width = `${nextWidth}px`;
-  indicator.style.transform = `translateX(${nextX}px)`;
+  const hostRect = host.getBoundingClientRect();
+  const rect = target.getBoundingClientRect();
+  const nextX = rect.left - hostRect.left;
+  const nextY = rect.top - hostRect.top;
+  indicator.style.width = `${rect.width}px`;
+  indicator.style.transform = `translate(${nextX}px, ${nextY}px)`;
   indicator.style.opacity = "1";
-  categoryNavIndicatorState = { x: nextX, width: nextWidth };
+  if (animateFromMain) {
+    indicator.classList.add("is-shifting");
+    setTimeout(() => indicator.classList.remove("is-shifting"), 420);
+  }
+  sharedNavIndicatorTarget = target;
+}
+
+function updateSharedIndicatorFromState() {
+  const activeCategory = categoryNav?.querySelector("a.is-active");
+  const activePage = pageNav?.querySelector("a.is-active");
+  moveSharedNavIndicator(activeCategory || activePage || null);
+}
+
+function applyPageBackground(src, withFade = true) {
+  const value = src ? `url('${src}')` : "";
+  if (pageBgTransitionTimer) {
+    clearTimeout(pageBgTransitionTimer);
+    pageBgTransitionTimer = null;
+  }
+  const setBackground = () => {
+    if (value) {
+      document.body.style.setProperty("--page-bg-image", value);
+      document.body.classList.add("has-page-bg");
+    } else {
+      document.body.style.removeProperty("--page-bg-image");
+      document.body.classList.remove("has-page-bg");
+    }
+  };
+  if (!withFade) {
+    setBackground();
+    document.body.style.setProperty("--page-bg-opacity", "1");
+    return;
+  }
+  document.body.style.setProperty("--page-bg-opacity", "0");
+  pageBgTransitionTimer = setTimeout(() => {
+    setBackground();
+    document.body.style.setProperty("--page-bg-opacity", "1");
+  }, 160);
 }
 
 function applyHeaderBackground(src, withFade = true) {
@@ -2578,18 +2634,10 @@ function renderFooter() {
 
 function renderNav() {
   if (!categoryNav) return;
-  const indicator = categoryNav.querySelector(".category-nav-indicator") || document.createElement("span");
   categoryNav.innerHTML = "";
-  indicator.className = "category-nav-indicator";
-  if (categoryNavIndicatorState) {
-    indicator.style.width = `${categoryNavIndicatorState.width}px`;
-    indicator.style.transform = `translateX(${categoryNavIndicatorState.x}px)`;
-    indicator.style.opacity = "1";
-  }
-  categoryNav.appendChild(indicator);
   categoryNav.classList.remove("nav-deploy");
-  if (currentPageId === "home") {
-    indicator.style.opacity = "0";
+  if (currentPageId === "home" || currentPageId === "pro") {
+    updateSharedIndicatorFromState();
     return;
   }
   if (shouldAnimateNavDeploy) {
@@ -2606,24 +2654,17 @@ function renderNav() {
     if (activeBlockId && activeBlockId === block.id) {
       link.classList.add("is-active");
     }
+    link.addEventListener("click", () => {
+      moveSharedNavIndicator(link, true);
+    });
     categoryNav.appendChild(link);
   });
-  requestAnimationFrame(updateCategoryNavIndicator);
+  requestAnimationFrame(updateSharedIndicatorFromState);
 }
 
 function renderPageNav() {
   if (!pageNav) return;
-  const indicator = pageNav.querySelector(".page-nav-indicator") || document.createElement("span");
-  const hadIndicatorState = pageNavIndicatorState;
   pageNav.innerHTML = "";
-
-  indicator.className = "page-nav-indicator";
-  if (hadIndicatorState) {
-    indicator.style.width = `${hadIndicatorState.width}px`;
-    indicator.style.transform = `translateX(${hadIndicatorState.x}px)`;
-    indicator.style.opacity = "1";
-  }
-  pageNav.appendChild(indicator);
 
   const pages = getVisiblePageDefinitions();
   pages.forEach((page, index) => {
@@ -2638,6 +2679,7 @@ function renderPageNav() {
     const link = document.createElement("a");
     link.href = `#${page.id}`;
     link.textContent = page.navLabel || page.title;
+    link.title = page.navLabel || page.title;
     link.dataset.pageId = page.id;
     if (page.id === "home") link.classList.add("is-home-link");
     if (page.id === currentPageId) link.classList.add("is-active");
@@ -2676,10 +2718,11 @@ function renderPageNav() {
       });
     }
 
+    link.addEventListener("click", () => moveSharedNavIndicator(link));
     pageNav.appendChild(link);
   });
 
-  requestAnimationFrame(updatePageNavIndicator);
+  requestAnimationFrame(updateSharedIndicatorFromState);
 }
 
 function renderHomePage() {
@@ -2895,6 +2938,43 @@ function renderHomePage() {
   });
 }
 
+
+function renderProPage() {
+  const panel = document.createElement("section");
+  panel.className = "panel pro-page";
+  const body = document.createElement("div");
+  body.className = "panel-body pro-page-body";
+  body.appendChild(renderEditableText("h2", state.proPage.title, (value) => { state.proPage.title = value; }, { className: "pro-page-title", placeholder: "Pro title" }));
+  body.appendChild(renderEditableText("p", state.proPage.body, (value) => { state.proPage.body = value; }, { className: "pro-page-copy", multiline: true, placeholder: "Pro description" }));
+  const features = document.createElement("div");
+  features.className = "pro-feature-list";
+  state.proPage.features = Array.isArray(state.proPage.features) && state.proPage.features.length ? state.proPage.features : [""];
+  state.proPage.features.forEach((feature, index) => {
+    const row = document.createElement("div");
+    row.className = "pro-feature-row";
+    row.appendChild(renderEditableText("span", feature, (value) => { state.proPage.features[index] = value; }, { className: "pro-feature-text", placeholder: "Feature" }));
+    features.appendChild(row);
+  });
+  body.appendChild(features);
+  const cta = document.createElement(adminMode ? "div" : "a");
+  cta.className = "btn btn-outline pro-cta";
+  if (!adminMode) {
+    cta.href = state.proPage.ctaUrl || "javascript:void(0)";
+    if (state.proPage.ctaUrl) { cta.target = "_blank"; cta.rel = "noopener noreferrer"; }
+  }
+  cta.textContent = state.proPage.ctaText || "Learn more";
+  body.appendChild(cta);
+  if (adminMode) {
+    const controls = document.createElement("div");
+    controls.className = "pro-cta-editor";
+    controls.appendChild(renderField("CTA text", state.proPage.ctaText, (value) => { state.proPage.ctaText = value; }, { editable: true, type: "text" }));
+    controls.appendChild(renderField("CTA link", state.proPage.ctaUrl, (value) => { state.proPage.ctaUrl = value; }, { editable: true, type: "text" }));
+    body.appendChild(controls);
+  }
+  panel.appendChild(body);
+  blocksContainer.appendChild(panel);
+}
+
 function render() {
   renderBootWarnings();
   renderThemeSelector();
@@ -2905,6 +2985,15 @@ function render() {
   renderNav();
   blocksContainer.innerHTML = "";
   blocksContainer.classList.remove("page-content-enter");
+
+  if (currentPageId === "pro") {
+    renderProPage();
+    updateScrollOffset();
+    shouldAnimatePageContent = false;
+    shouldAnimateNavDeploy = false;
+    saveState();
+    return;
+  }
 
   if (currentPageId === "home") {
     renderHomePage();
@@ -2979,11 +3068,7 @@ function renderRulesBlock(block, index) {
   section.dataset.title = block.title || "Information Box";
   const editing = isBlockEditing(block.id);
 
-  const header = document.createElement("div");
-  header.className = "panel-header";
-  header.appendChild(renderBlockTitle(block, "h2", editing));
-  header.appendChild(renderBlockActions(block, index, editing));
-  section.appendChild(header);
+  appendBlockHeader(section, block, index, editing, "h2");
 
   const body = document.createElement("div");
   body.className = "panel-body rules-grid";
@@ -3490,11 +3575,7 @@ function renderShipMetaBlock(block, index) {
   section.dataset.title = block.title || "Ship Meta Box";
   const editing = isBlockEditing(block.id);
 
-  const header = document.createElement("div");
-  header.className = "panel-header";
-  header.appendChild(renderBlockTitle(block, "h2", editing));
-  header.appendChild(renderBlockActions(block, index, editing));
-  section.appendChild(header);
+  appendBlockHeader(section, block, index, editing, "h2");
 
   const body = document.createElement("div");
   body.className = "panel-body ship-meta-box";
@@ -3514,33 +3595,17 @@ function renderShipMetaBlock(block, index) {
     const titleRow = document.createElement("div");
     titleRow.className = "ship-meta-compact-title";
     if (editing) {
-      const shipInput = document.createElement("input");
-      shipInput.type = "text";
-      shipInput.className = "panel-title-input";
-      shipInput.placeholder = "Ship name";
-      shipInput.value = metaItem.shipName || "";
-      shipInput.addEventListener("input", () => { metaItem.shipName = shipInput.value; });
-      const roleInput = document.createElement("input");
-      roleInput.type = "text";
-      roleInput.className = "panel-title-input";
-      roleInput.placeholder = "Role";
-      roleInput.value = metaItem.roleTagline || "";
-      roleInput.addEventListener("input", () => { metaItem.roleTagline = roleInput.value; });
-      titleRow.appendChild(shipInput);
-      const sep = document.createElement("span");
-      sep.className = "ship-meta-separator";
-      titleRow.appendChild(sep);
-      titleRow.appendChild(roleInput);
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.className = "panel-title-input";
+      titleInput.placeholder = "Title";
+      titleInput.value = metaItem.shipName || "";
+      titleInput.addEventListener("input", () => { metaItem.shipName = titleInput.value; });
+      titleRow.appendChild(titleInput);
     } else {
       const shipName = document.createElement("span");
-      shipName.textContent = metaItem.shipName || "Ship";
-      const sep = document.createElement("span");
-      sep.className = "ship-meta-separator";
-      const role = document.createElement("span");
-      role.textContent = metaItem.roleTagline || "Role";
+      shipName.textContent = metaItem.shipName || "Untitled";
       titleRow.appendChild(shipName);
-      titleRow.appendChild(sep);
-      titleRow.appendChild(role);
     }
     const infoBtn = document.createElement(editing ? "input" : "a");
     infoBtn.className = "ship-meta-info-link";
@@ -3563,8 +3628,8 @@ function renderShipMetaBlock(block, index) {
     const modeToggle = document.createElement("div");
     modeToggle.className = "mode-toggle-buttons ship-mode-toggle";
     [
-      { value: "premium", label: "Premium Components" },
-      { value: "pu", label: "PU Shop Build" },
+      { value: "premium", label: "Loot only" },
+      { value: "pu", label: "Buyable" },
     ].forEach((entry) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -3613,6 +3678,17 @@ function renderShipMetaBlock(block, index) {
       icon.className = "ship-icon";
       icon.textContent = getShipMetaIcon(row.key);
       left.appendChild(icon);
+      const qty = document.createElement(editing ? "input" : "span");
+      qty.className = "ship-meta-qty";
+      if (editing) {
+        qty.type = "number";
+        qty.min = "1";
+        qty.value = Number(row.quantity) > 0 ? Number(row.quantity) : 1;
+        qty.addEventListener("input", () => { row.quantity = Math.max(1, Number(qty.value) || 1); });
+      } else {
+        qty.textContent = `x${Math.max(1, Number(row.quantity) || 1)}`;
+      }
+      left.appendChild(qty);
       rowEl.appendChild(left);
 
       const componentInput = document.createElement(editing ? "input" : "span");
@@ -3682,12 +3758,21 @@ function renderShipMetaBlock(block, index) {
     rightSig.className = "ship-meta-signature-damage";
     rightSig.appendChild(renderField("Sustained DPS", modeData.signatures?.sustainedDps, (value) => { modeData.signatures.sustainedDps = value; }, { editable: editing, type: "number" }));
     rightSig.appendChild(renderField("Alpha Damage", modeData.signatures?.alphaDamage, (value) => { modeData.signatures.alphaDamage = value; }, { editable: editing, type: "number" }));
+    const hpSep = document.createElement("span");
+    hpSep.className = "ship-meta-v-sep";
+    const hpSig = document.createElement("div");
+    hpSig.className = "ship-meta-signature-damage";
+    hpSig.appendChild(renderField("Shield HP", modeData.signatures?.shieldHp, (value) => { modeData.signatures.shieldHp = value; }, { editable: editing, type: "number" }));
+    hpSig.appendChild(renderField("Armor HP", modeData.signatures?.armorHp, (value) => { modeData.signatures.armorHp = value; }, { editable: editing, type: "number" }));
+    hpSig.appendChild(renderField("Total HP", modeData.signatures?.totalHp, (value) => { modeData.signatures.totalHp = value; }, { editable: editing, type: "number" }));
       signatures.appendChild(leftSig);
       signatures.appendChild(sep);
       signatures.appendChild(rightSig);
+      signatures.appendChild(hpSep);
+      signatures.appendChild(hpSig);
       modeContent.appendChild(signatures);
 
-      modeContent.appendChild(renderField("Meta summary", modeData.summary, (value) => { modeData.summary = value; }, { editable: editing, type: "textarea", className: "span-two" }));
+      modeContent.appendChild(renderField("Meta summary", modeData.summary, (value) => { modeData.summary = value; }, { editable: editing, type: "textarea", className: "span-two", emptyText: "n/a" }));
     };
     renderModeContent();
     card.appendChild(modeContent);
@@ -3747,11 +3832,7 @@ function renderVideoBlock(block, index) {
   section.dataset.title = block.title || "Video";
   const editing = isBlockEditing(block.id);
 
-  const header = document.createElement("div");
-  header.className = "panel-header";
-  header.appendChild(renderBlockTitle(block, "h2", editing));
-  header.appendChild(renderBlockActions(block, index, editing));
-  section.appendChild(header);
+  appendBlockHeader(section, block, index, editing, "h2");
 
   const videos = renderVideoSection(block, { showEmpty: !adminMode, panelPadding: true, editable: editing });
   if (videos) {
@@ -4329,6 +4410,25 @@ function renderCalloutGroupBlock(block, index) {
   return section;
 }
 
+function appendBlockHeader(section, block, index, editing, tag = "h2") {
+  const hasTitle = Boolean((block.title || "").trim());
+  if (!hasTitle && !adminMode) {
+    section.classList.add("panel-no-title");
+    return;
+  }
+  const header = document.createElement("div");
+  header.className = "panel-header";
+  const title = renderBlockTitle(block, tag, editing);
+  if (hasTitle || adminMode) {
+    header.appendChild(title);
+  }
+  header.appendChild(renderBlockActions(block, index, editing));
+  if (!hasTitle) {
+    header.classList.add("is-title-empty");
+  }
+  section.appendChild(header);
+}
+
 function renderBlockTitle(block, tag, editing = false) {
   if (!adminMode || !editing) {
     const heading = document.createElement(tag);
@@ -4724,7 +4824,13 @@ function renderField(labelText, value, onChange, options) {
     if (options.multilineDisplay) {
       display.innerHTML = formatMultilineHtml(value);
     } else {
-      display.textContent = value || "–";
+      const textValue = value === 0 || value ? String(value) : "";
+      if (textValue) {
+        display.textContent = textValue;
+      } else {
+        display.textContent = options.emptyText || "–";
+        if (options.emptyText) display.classList.add("is-na");
+      }
     }
     field.appendChild(display);
     return field;
@@ -6128,7 +6234,7 @@ if (adminToggle) {
 
 window.addEventListener("resize", () => {
   updateScrollOffset();
-  updatePageNavIndicator();
+  updateSharedIndicatorFromState();
 });
 
 try {
