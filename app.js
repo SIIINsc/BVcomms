@@ -108,7 +108,7 @@ const DEFAULT_STATE = {
     {
       id: "flows-block",
       type: "flows",
-      title: "Example Box",
+      title: "Flow Box",
       contextText: "",
       flows: [
         {
@@ -688,7 +688,7 @@ function createBlankExampleBlock() {
   return {
     id: createId("flows"),
     type: "flows",
-    title: "Example Box",
+    title: "Flow Box",
     contextText: "",
     flows: [],
   };
@@ -1934,16 +1934,134 @@ function renderAdminBox() {
   }
 
   const actionSection = document.createElement("div");
-  actionSection.className = "admin-section";
+  actionSection.className = "admin-section admin-section--actions";
   const actionTitle = document.createElement("div");
   actionTitle.className = "admin-section-title";
-  actionTitle.textContent = "Project actions";
+  actionTitle.textContent = isHomePage ? "Project action" : "Page action";
   actionSection.appendChild(actionTitle);
 
-  const actionRow = document.createElement("div");
-  actionRow.className = "admin-row";
+  const actionSegments = document.createElement("div");
+  actionSegments.className = "admin-action-sections";
+
+  const createSegment = (title) => {
+    const segment = document.createElement("div");
+    segment.className = "admin-action-segment";
+    const segmentTitle = document.createElement("div");
+    segmentTitle.className = "admin-subtitle";
+    segmentTitle.textContent = title;
+    segment.appendChild(segmentTitle);
+    return segment;
+  };
+
+  const addSegmentDivider = () => {
+    const divider = document.createElement("div");
+    divider.className = "admin-v-divider";
+    actionSegments.appendChild(divider);
+  };
+
+  const createAddBoxRow = () => {
+    const blockRow = document.createElement("div");
+    blockRow.className = "admin-row admin-row-wrap";
+    const addInfo = document.createElement("button");
+    addInfo.className = "btn btn-outline";
+    addInfo.type = "button";
+    addInfo.textContent = "Add Information Box";
+    addInfo.addEventListener("click", () => {
+      getPageBlocks().push({
+        id: createId("rules"),
+        type: "rules",
+        title: "Information Box",
+        videos: [],
+        sections: [
+          {
+            id: createId("rules-section"),
+            title: "New Information Sub-Box",
+            subtitle: "",
+            body: "",
+            note: "",
+            mediaType: "",
+            mediaSrc: "",
+            mediaVideoType: "local",
+            backgroundSrc: "",
+          },
+        ],
+      });
+      render();
+    });
+
+    const addFlow = document.createElement("button");
+    addFlow.className = "btn btn-outline";
+    addFlow.type = "button";
+    addFlow.textContent = "Add Flow Box";
+    addFlow.addEventListener("click", () => {
+      getPageBlocks().push({
+        id: createId("flows"),
+        type: "flows",
+        title: "Flow Box",
+        videos: [],
+        contextText: "",
+        flows: [
+          {
+            id: createId("flow"),
+            title: "New Flow Sub-Box",
+            exampleLabel: "Example",
+            exampleTargetId: "",
+            imageSrc: "",
+            visibility: "both",
+            videos: [],
+            rows: [],
+          },
+        ],
+      });
+      render();
+    });
+
+    const addStudy = document.createElement("button");
+    addStudy.className = "btn btn-outline";
+    addStudy.type = "button";
+    addStudy.textContent = "Add Study Box";
+    addStudy.addEventListener("click", () => {
+      const newId = createId("group");
+      const insertIndex = getPageBlocks().length;
+      getPageBlocks().splice(insertIndex, 0, {
+        id: newId,
+        type: "calloutGroup",
+        title: "New Study Box",
+        videos: [],
+        subBoxes: [{ id: createId("study-sub"), title: "Study Sub-Box", description: "" }],
+      });
+      render();
+    });
+
+    const addVideo = document.createElement("button");
+    addVideo.className = "btn btn-outline";
+    addVideo.type = "button";
+    addVideo.textContent = "Add video block";
+    addVideo.addEventListener("click", () => {
+      getPageBlocks().push({ id: createId("video"), type: "video", title: "Video", videos: [] });
+      render();
+    });
+
+    const addShipMeta = document.createElement("button");
+    addShipMeta.className = "btn btn-outline";
+    addShipMeta.type = "button";
+    addShipMeta.textContent = "Add Ship Meta Box";
+    addShipMeta.addEventListener("click", () => {
+      getPageBlocks().push(createBlankShipMetaBlock());
+      render();
+    });
+
+    blockRow.appendChild(addInfo);
+    blockRow.appendChild(addFlow);
+    blockRow.appendChild(addStudy);
+    blockRow.appendChild(addVideo);
+    blockRow.appendChild(addShipMeta);
+    return blockRow;
+  };
 
   if (!isHomePage) {
+    const actionRow = document.createElement("div");
+    actionRow.className = "admin-row";
     const renameInput = document.createElement("input");
     renameInput.type = "text";
     renameInput.className = "panel-title-input";
@@ -1956,6 +2074,7 @@ function renderAdminBox() {
       renderNav();
     });
     actionRow.appendChild(renameInput);
+    actionSegments.appendChild(actionRow);
   }
 
   const exportZipBtn = document.createElement("button");
@@ -1983,127 +2102,34 @@ function renderAdminBox() {
   });
 
   if (isHomePage) {
-    actionRow.appendChild(exportZipBtn);
+    const onlineBuildSegment = createSegment("Online build:");
+    const onlineRow = document.createElement("div");
+    onlineRow.className = "admin-row admin-row-wrap";
+    onlineRow.appendChild(exportZipBtn);
     if (!ONLINE_BUILD) {
-      actionRow.appendChild(onlineExportBtn);
-      actionRow.appendChild(onlineViewerOnlyBtn);
+      onlineRow.appendChild(onlineExportBtn);
+      onlineRow.appendChild(onlineViewerOnlyBtn);
     }
+    onlineBuildSegment.appendChild(onlineRow);
+    actionSegments.appendChild(onlineBuildSegment);
+    addSegmentDivider();
+
+    const pageActionSegment = createSegment("Page action:");
+    pageActionSegment.appendChild(createAddBoxRow());
+    actionSegments.appendChild(pageActionSegment);
+    addSegmentDivider();
+
+    const headerSegment = createHeaderMediaSection();
+    actionSegments.appendChild(headerSegment);
+  } else {
+    const pageActionRow = createAddBoxRow();
+    actionSegments.appendChild(pageActionRow);
   }
-  actionSection.appendChild(actionRow);
 
-  const blockRow = document.createElement("div");
-  blockRow.className = "admin-row";
-  const addInfo = document.createElement("button");
-  addInfo.className = "btn btn-outline";
-  addInfo.type = "button";
-  addInfo.textContent = "Add Information Box";
-  addInfo.addEventListener("click", () => {
-    getPageBlocks().push({
-      id: createId("rules"),
-      type: "rules",
-      title: "Information Box",
-      videos: [],
-      sections: [
-        {
-          id: createId("rules-section"),
-          title: "New Information Sub-Box",
-          subtitle: "",
-          body: "",
-          note: "",
-          mediaType: "",
-          mediaSrc: "",
-          mediaVideoType: "local",
-          backgroundSrc: "",
-        },
-      ],
-    });
-    render();
-  });
-  const addExample = document.createElement("button");
-  addExample.className = "btn btn-outline";
-  addExample.type = "button";
-  addExample.textContent = "Add Example Box";
-  addExample.addEventListener("click", () => {
-    getPageBlocks().push({
-      id: createId("flows"),
-      type: "flows",
-      title: "Example Box",
-      videos: [],
-      contextText: "",
-      flows: [
-        {
-          id: createId("flow"),
-          title: "New Example Sub-Box",
-          exampleLabel: "Example",
-          exampleTargetId: "",
-          imageSrc: "",
-          visibility: "both",
-          videos: [],
-          rows: [],
-        },
-      ],
-    });
-    render();
-  });
-  const addStudy = document.createElement("button");
-  addStudy.className = "btn btn-outline";
-  addStudy.type = "button";
-  addStudy.textContent = "Add Study Box";
-  addStudy.addEventListener("click", () => {
-    const newId = createId("group");
-    const insertIndex = getPageBlocks().length;
-    getPageBlocks().splice(insertIndex, 0, {
-      id: newId,
-      type: "calloutGroup",
-      title: "New Study Box",
-      videos: [],
-      subBoxes: [{ id: createId("study-sub"), title: "Study Sub-Box", description: "" }],
-    });
-    render();
-  });
-
-  const addVideo = document.createElement("button");
-  addVideo.className = "btn btn-outline";
-  addVideo.type = "button";
-  addVideo.textContent = "Add video block";
-  addVideo.addEventListener("click", () => {
-    getPageBlocks().push({
-      id: createId("video"),
-      type: "video",
-      title: "Video",
-      videos: [],
-    });
-    render();
-  });
-
-  const addShipMeta = document.createElement("button");
-  addShipMeta.className = "btn btn-outline";
-  addShipMeta.type = "button";
-  addShipMeta.textContent = "Add Ship Meta Box";
-  addShipMeta.addEventListener("click", () => {
-    getPageBlocks().push(createBlankShipMetaBlock());
-    render();
-  });
-
-  blockRow.appendChild(addInfo);
-  blockRow.appendChild(addExample);
-  blockRow.appendChild(addStudy);
-  blockRow.appendChild(addVideo);
-  blockRow.appendChild(addShipMeta);
-  actionSection.appendChild(blockRow);
+  actionSection.appendChild(actionSegments);
 
   if (isHomePage) {
-    if (onlineSection) {
-      adminBox.appendChild(onlineSection);
-      const dividerA = document.createElement("div");
-      dividerA.className = "admin-divider";
-      adminBox.appendChild(dividerA);
-    }
     adminBox.appendChild(actionSection);
-    const dividerB = document.createElement("div");
-    dividerB.className = "admin-divider";
-    adminBox.appendChild(dividerB);
-    adminBox.appendChild(createHeaderMediaSection());
     return;
   }
   adminBox.appendChild(actionSection);
@@ -2956,11 +2982,17 @@ function renderHomePage() {
 
   homePanelBody.appendChild(tiles);
   if (adminMode) {
+    const maxSubPages = 10;
+    const atPageLimit = getHomeSubPages().length >= maxSubPages;
     const addSubPage = document.createElement("button");
     addSubPage.className = "btn btn-outline";
     addSubPage.type = "button";
     addSubPage.textContent = "Add Sub Page";
+    addSubPage.disabled = atPageLimit;
     addSubPage.addEventListener("click", () => {
+      if (getHomeSubPages().length >= maxSubPages) {
+        return;
+      }
       const pageId = createId("sub");
       const title = "New Sub Page";
       home.subPages.push({ id: pageId, title, navLabel: title, backgroundSrc: "", staticSrc: "", mediaType: "image" });
@@ -2968,6 +3000,12 @@ function renderHomePage() {
       render();
     });
     homePanelBody.appendChild(addSubPage);
+    if (atPageLimit) {
+      const limitNote = document.createElement("div");
+      limitNote.className = "admin-note";
+      limitNote.textContent = "Max 10 pages";
+      homePanelBody.appendChild(limitNote);
+    }
   }
   homePanel.appendChild(homePanelBody);
 
@@ -3368,38 +3406,41 @@ function renderFlowsBlock(block, index) {
   const section = document.createElement("section");
   section.className = adminMode ? "panel" : "panel panelless-block";
   section.id = block.id;
-  section.dataset.title = block.title || "Example Box";
+  section.dataset.title = block.title || "Flow Box";
   const editing = isBlockEditing(block.id);
+  const hasHeaderContent = Boolean((block.title || "").trim() || (block.contextText || "").trim());
 
-  const header = document.createElement("div");
-  header.className = "panel-header";
-  header.appendChild(renderBlockTitle(block, "h2", editing));
-  if (editing) {
-    const contextInput = document.createElement("input");
-    contextInput.type = "text";
-    contextInput.value = block.contextText || "";
-    contextInput.placeholder = "Add a short note for this block";
-    contextInput.className = "panel-context-input";
-    contextInput.addEventListener("input", () => {
-      block.contextText = contextInput.value;
-    });
-    header.appendChild(contextInput);
-  } else if (block.contextText) {
-    const context = document.createElement("div");
-    context.className = "block-context";
-    context.textContent = block.contextText;
-    header.appendChild(context);
+  if (editing || hasHeaderContent) {
+    const header = document.createElement("div");
+    header.className = "panel-header";
+    header.appendChild(renderBlockTitle(block, "h2", editing));
+    if (editing) {
+      const contextInput = document.createElement("input");
+      contextInput.type = "text";
+      contextInput.value = block.contextText || "";
+      contextInput.placeholder = "Add a short note for this block";
+      contextInput.className = "panel-context-input";
+      contextInput.addEventListener("input", () => {
+        block.contextText = contextInput.value;
+      });
+      header.appendChild(contextInput);
+    } else if (block.contextText) {
+      const context = document.createElement("div");
+      context.className = "block-context";
+      context.textContent = block.contextText;
+      header.appendChild(context);
+    }
+    const headerControls = document.createElement("div");
+    headerControls.className = "block-header-controls";
+    if (editing) {
+      const roleEditor = renderRoleLabelsEditor();
+      roleEditor.classList.add("role-labels-editor-inline");
+      headerControls.appendChild(roleEditor);
+    }
+    headerControls.appendChild(renderBlockActions(block, index, editing));
+    header.appendChild(headerControls);
+    section.appendChild(header);
   }
-  const headerControls = document.createElement("div");
-  headerControls.className = "block-header-controls";
-  if (editing) {
-    const roleEditor = renderRoleLabelsEditor();
-    roleEditor.classList.add("role-labels-editor-inline");
-    headerControls.appendChild(roleEditor);
-  }
-  headerControls.appendChild(renderBlockActions(block, index, editing));
-  header.appendChild(headerControls);
-  section.appendChild(header);
 
   const body = document.createElement("div");
   body.className = "panel-body flow-grid";
@@ -3462,7 +3503,7 @@ function renderFlowsBlock(block, index) {
       const addRow = document.createElement("button");
       addRow.className = "btn btn-outline";
       addRow.type = "button";
-      addRow.textContent = "Add Example Row";
+      addRow.textContent = "Add Flow Row";
       addRow.addEventListener("click", () => {
         flow.rows.push({
           id: createId("flow-row"),
@@ -3586,7 +3627,7 @@ function renderFlowsBlock(block, index) {
     addFlow.addEventListener("click", () => {
       block.flows.push({
         id: createId("flow"),
-        title: "New Example Sub-Box",
+        title: "New Flow Sub-Box",
         exampleLabel: "Example",
         exampleTargetId: "",
         imageSrc: "",
@@ -3956,7 +3997,7 @@ function renderFlowRow(flow, row, rowIndex, editing) {
       const exampleInput = document.createElement("input");
       exampleInput.type = "text";
       exampleInput.value = row.rowContext || "";
-      exampleInput.placeholder = "Example Row context";
+      exampleInput.placeholder = "Flow Row context";
       exampleInput.className = "panel-title-input";
       exampleInput.addEventListener("input", () => {
         row.rowContext = exampleInput.value;
@@ -4411,47 +4452,8 @@ function renderCalloutGroupBlock(block, index) {
       elementGrid.appendChild(emptySub);
     }
 
-    subCallouts.forEach((item, itemIndex) => {
+    subCallouts.forEach((item) => {
       const card = renderCalloutCard(item, { editable: editing, studyOverlay: true });
-      if (editing) {
-        const reorder = document.createElement("div");
-        reorder.className = "tile-inline-actions";
-        const up = document.createElement("button");
-        up.className = "btn btn-ghost btn-compact";
-        up.type = "button";
-        up.textContent = "↑";
-        up.disabled = itemIndex === 0;
-        up.addEventListener("click", () => {
-          const callouts = getPageCallouts();
-          const indexes = callouts.map((entry, idx2) => ({ entry, idx2 })).filter(({ entry }) => entry.groupId === block.id && (entry.subBoxId || block.subBoxes[0]?.id) === subBox.id).map(({ idx2 }) => idx2);
-          const from = indexes[itemIndex];
-          const to = indexes[itemIndex - 1];
-          if (typeof from === "number" && typeof to === "number") {
-            const [moved] = callouts.splice(from, 1);
-            callouts.splice(to, 0, moved);
-            render();
-          }
-        });
-        const down = document.createElement("button");
-        down.className = "btn btn-ghost btn-compact";
-        down.type = "button";
-        down.textContent = "↓";
-        down.disabled = itemIndex >= subCallouts.length - 1;
-        down.addEventListener("click", () => {
-          const callouts = getPageCallouts();
-          const indexes = callouts.map((entry, idx2) => ({ entry, idx2 })).filter(({ entry }) => entry.groupId === block.id && (entry.subBoxId || block.subBoxes[0]?.id) === subBox.id).map(({ idx2 }) => idx2);
-          const from = indexes[itemIndex];
-          const to = indexes[itemIndex + 1];
-          if (typeof from === "number" && typeof to === "number") {
-            const [moved] = callouts.splice(from, 1);
-            callouts.splice(to, 0, moved);
-            render();
-          }
-        });
-        reorder.appendChild(up);
-        reorder.appendChild(down);
-        card.appendChild(reorder);
-      }
       elementGrid.appendChild(card);
     });
     subCard.appendChild(elementGrid);
@@ -4753,7 +4755,7 @@ function renderCalloutCard(item, options = {}) {
       field.appendChild(control);
     } else {
       const display = document.createElement("div");
-      display.className = "readonly";
+      display.className = "readonly subelement-content";
       display.innerHTML = formatMultilineHtml(sub.content || "");
       field.appendChild(display);
     }
@@ -4805,7 +4807,7 @@ function renderCalloutCard(item, options = {}) {
     body.appendChild(calloutVideos);
   }
 
-  const calloutMedia = renderCalloutImage(item, editable);
+  const calloutMedia = studyOverlay ? null : renderCalloutImage(item, editable);
   if (calloutMedia) {
     body.classList.add("has-media");
     body.appendChild(calloutMedia);
@@ -5663,8 +5665,8 @@ function buildExportReadme(sourceState) {
 The state is serialized under \`${STORAGE_KEY}\` as JSON. Key areas:
 - \`header\`: eyebrow/title/subtitle/intro, logo, background image, and three social icons.
 - \`ui\`: current theme name.
-- \`roleLabels\`: labels (name + color) used in Example Box nodes.
-- \`blocks\`: ordered list of Information Boxes, Example Boxes, Study Boxes, and video blocks.
+- \`roleLabels\`: labels (name + color) used in Flow Box nodes.
+- \`blocks\`: ordered list of Information Boxes, Flow Boxes, Study Boxes, and video blocks.
 - \`callouts\`: Elements that belong to Study Boxes via \`groupId\`.
 
 ## How to customize
@@ -5997,7 +5999,7 @@ function buildViewerBlock(block, sourceState) {
       })
       .join("");
     return `
-      <section class="panel" id="${block.id}" data-title="${escapeHtml(block.title || "Example Box")}">
+      <section class="panel" id="${block.id}" data-title="${escapeHtml(block.title || "Flow Box")}">
         <div class="panel-header">
           <h2>${escapeHtml(block.title)}</h2>
           ${block.contextText ? `<div class="block-context">${escapeHtml(block.contextText)}</div>` : ""}
